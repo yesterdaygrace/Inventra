@@ -16,7 +16,9 @@ import (
 )
 
 // ErrEmailTaken is returned when registering an email that already exists.
-var ErrEmailTaken = errors.New("email already registered")
+// It wraps ErrConflict so the response envelope maps it to HTTP 409 while
+// callers can still match it directly with errors.Is.
+var ErrEmailTaken = fmt.Errorf("%w: email already registered", sharederr.ErrConflict)
 
 // ActivityLogEntry is a minimal audit event recorded by the service. It is
 // intentionally decoupled from the activitylog package's model to avoid an
@@ -70,6 +72,20 @@ type AuthResult struct {
 	RefreshToken string
 	ExpiresIn    int64
 	User         *User
+	RoleName     string
+}
+
+// Profile returns a user with its role name resolved.
+func (s *Service) Profile(userID uuid.UUID) (*User, string, error) {
+	user, err := s.repo.FindUserByID(userID)
+	if err != nil {
+		return nil, "", err
+	}
+	role, err := s.RoleName(userID)
+	if err != nil {
+		return nil, "", err
+	}
+	return user, role, nil
 }
 
 // Register creates a STAFF user with a bcrypt-hashed password.
@@ -241,6 +257,19 @@ func (s *Service) UpdateProfile(userID uuid.UUID, name, email string) (*User, er
 	return user, nil
 }
 
+// RoleName returns the role name for a user.
+func (s *Service) RoleName(userID uuid.UUID) (string, error) {
+	user, err := s.repo.FindUserByID(userID)
+	if err != nil {
+		return "", err
+	}
+	role, err := s.repo.FindRoleByID(user.RoleID)
+	if err != nil {
+		return "", err
+	}
+	return role.Name, nil
+}
+
 func (s *Service) issueTokens(user *User) (*AuthResult, error) {
 	role, err := s.repo.FindRoleByID(user.RoleID)
 	if err != nil {
@@ -267,6 +296,7 @@ func (s *Service) issueTokens(user *User) (*AuthResult, error) {
 		RefreshToken: raw,
 		ExpiresIn:    int64(s.tokens.accessTTL.Seconds()),
 		User:         user,
+		RoleName:     role.Name,
 	}, nil
 }
 

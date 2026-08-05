@@ -8,10 +8,12 @@ import (
 
 	"go.uber.org/zap"
 
+	"inventory/internal/auth"
 	"inventory/internal/shared/config"
 	"inventory/internal/shared/database"
 	"inventory/internal/shared/logger"
 	"inventory/internal/shared/router"
+	"inventory/internal/shared/validator"
 )
 
 func main() {
@@ -32,7 +34,22 @@ func main() {
 	}
 	defer sqlDB.Close()
 
+	if err := database.AutoMigrate(db, database.Models()...); err != nil {
+		zlog.Fatal("auto migrate failed", zap.Error(err))
+	}
+
 	r := router.New(cfg)
+
+	// Auth module wiring
+	authRepo := auth.NewGORMRepository(db)
+	tm := auth.NewTokenManager(auth.TokenManagerConfig{
+		Secret:     cfg.JWTSecret,
+		AccessTTL:  cfg.JWTAccessTTL,
+		RefreshTTL: cfg.JWTRefreshTTL,
+	})
+	authSvc := auth.NewService(authRepo, tm, cfg.BCryptCost)
+	authH := auth.NewHandler(authSvc, validator.New())
+	auth.RegisterRoutes(r.Group("/api/v1"), authH, tm)
 
 	addr := ":" + cfg.Port
 	zlog.Info("inventory api listening", zap.String("addr", addr))

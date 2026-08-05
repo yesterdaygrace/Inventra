@@ -132,3 +132,27 @@ func (tm *TokenManager) HashRefreshToken(raw string) string {
 
 // RefreshTTL reports the configured refresh token lifetime.
 func (tm *TokenManager) RefreshTTL() time.Duration { return tm.refreshTTL }
+
+// TokenParser adapts TokenManager to middleware.ClaimsParser: it returns
+// (userID, role, error) from a raw access token.
+type TokenParser struct {
+	tm *TokenManager
+}
+
+// NewTokenParser wraps a TokenManager as a middleware.ClaimsParser.
+func NewTokenParser(tm *TokenManager) *TokenParser {
+	return &TokenParser{tm: tm}
+}
+
+// ParseAccessToken implements middleware.ClaimsParser.
+func (p *TokenParser) ParseAccessToken(raw string) (uuid.UUID, string, error) {
+	claims, err := p.tm.ParseAccessToken(raw)
+	if err != nil {
+		return uuid.Nil, "", err
+	}
+	uid, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, "", ErrTokenInvalid
+	}
+	return uid, claims.Role, nil
+}
