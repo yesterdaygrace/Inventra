@@ -320,12 +320,12 @@ Commit: `feat(category): handlers, routes, csv export`.
 End W5: category green.
 
 ### W6 - Product module (C4, P0)
-- [ ] **T6.1 - Product service + repo (CRUD + search/sort/filter/paginate)**
+- [x] **T6.1 - Product service + repo (CRUD + search/sort/filter/paginate)**
 Files: `internal/product/{model,repository,service}.go` (+ tests). Filters: q (name/sku), category_id, min_price, max_price, low_stock (qty<=threshold), is_archived; sort: name/price/created_at/sku; pagination page/per_page.
 Acceptance: repo builds dynamic WHERE + ORDER + LIMIT/OFFSET safely (no injection); service enforces unique SKU.
 QA happy: mock returns filtered page. QA failure: SQL injection string for sort col rejected -> ErrValidation — evidence test.
 Commit: `feat(product): product service + repo`.
-- [ ] **T6.2 - Product handlers + routes + CSV export**
+- [x] **T6.2 - Product handlers + routes + CSV export**
 Files: `internal/product/handler.go`, `router.go`, `handler_test.go`. Routes: POST/GET /products, GET/PUT/DELETE /products/:id, GET /products/export.
 Acceptance: CRUD + query params + CSV export; category name included in list payload.
 QA happy: create->list with filter->get roundtrip. QA failure: duplicate SKU -> 409 — evidence test.
