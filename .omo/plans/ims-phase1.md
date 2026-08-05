@@ -288,18 +288,18 @@ Commit: `feat(auth): handlers, jwt middleware, rbac`.
 End W3: full auth e2e via curl against dockerized API; W3 tests green.
 
 ### W4 - User module (C3, P0)
-- [ ] **T4.0 - SPEC-FIRST: docs/backend.md (Go implementation standards)**
+- [x] **T4.0 - SPEC-FIRST: docs/backend.md (Go implementation standards)**
 References: PRD #10 (packages, interfaces, DI, error wrapping, transactions, generics), #9; user doc priority P1. Files: `docs/backend.md` (package conventions, repository interface pattern with concrete example, service error wrapping, transaction usage for inventory, DTO/validation pattern, response envelope usage, logger usage, ctx propagation).
 Acceptance: doc is authoritative for all later backend todos; W7 transaction design matches it.
 QA happy: W7 stock-in/out code follows backend.md transaction pattern — evidence code review. QA failure: module bypasses repo interface -> F2 flags.
 Commit: `docs(backend): go implementation standards`.
 
-- [ ] **T4.1 - User service + repo (admin mgmt)**
+- [x] **T4.1 - User service + repo (admin mgmt)**
 Files: `internal/user/{model,repository,service}.go` (+ tests). List/search/paginate, get by id, update profile fields, assign role, activate/deactivate. Reuses auth models.
 Acceptance: repo paginates + filters by name/email/role; service guards (cannot deactivate self).
 QA happy: mock repo returns users page. QA failure: last admin self-deactivation -> ErrConflict — evidence test.
 Commit: `feat(user): admin user management service`.
-- [ ] **T4.2 - User handlers + routes**
+- [x] **T4.2 - User handlers + routes**
 Files: `internal/user/handler.go`, `internal/user/router.go` (+ handler_test.go). Routes: GET /users (admin, paginated/filtered), GET /users/:id, PUT /users/:id, DELETE /users/:id (deactivate), PUT /users/:id/role.
 Acceptance: admin-only via RBAC; envelope pagination meta.
 QA happy: admin list users 200. QA failure: non-admin -> 403 — evidence test.
