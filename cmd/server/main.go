@@ -11,8 +11,10 @@ import (
 	"inventory/internal/activitylog"
 	"inventory/internal/auth"
 	"inventory/internal/category"
+	"inventory/internal/dashboard"
 	"inventory/internal/inventory"
 	"inventory/internal/product"
+	"inventory/internal/report"
 	"inventory/internal/shared/config"
 	"inventory/internal/shared/database"
 	"inventory/internal/shared/logger"
@@ -84,6 +86,14 @@ func main() {
 	inventoryH := inventory.NewHandler(inventorySvc, validator.New())
 	inventoryH.SetAudit(auditSvc)
 	inventory.RegisterRoutes(r.Group("/api/v1"), inventoryH, auth.NewTokenParser(tm))
+
+	dashboardSvc := dashboard.NewService(dashboard.NewGORMRepository(db))
+	dashboardH := dashboard.NewHandler(dashboardSvc)
+	dashboard.RegisterRoutes(r.Group("/api/v1"), dashboardH, auth.NewTokenParser(tm))
+
+	reportSvc := report.NewService(report.NewGORMRepository(db))
+	reportH := report.NewHandler(reportSvc)
+	report.RegisterRoutes(r.Group("/api/v1"), reportH, auth.NewTokenParser(tm))
 
 	addr := ":" + cfg.Port
 	zlog.Info("inventory api listening", zap.String("addr", addr))
