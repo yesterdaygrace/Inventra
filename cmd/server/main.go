@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"inventory/internal/activitylog"
 	"inventory/internal/auth"
 	"inventory/internal/category"
 	"inventory/internal/inventory"
@@ -44,6 +45,11 @@ func main() {
 
 	r := router.New(cfg)
 
+	// Activity log module wiring; all mutation handlers share one recorder.
+	auditRepo := activitylog.NewGORMRepository(db)
+	auditSvc := activitylog.NewService(auditRepo, zlog)
+	auditH := activitylog.NewHandler(auditSvc, validator.New())
+
 	// Auth module wiring
 	authRepo := auth.NewGORMRepository(db)
 	tm := auth.NewTokenManager(auth.TokenManagerConfig{
@@ -53,23 +59,30 @@ func main() {
 	})
 	authSvc := auth.NewService(authRepo, tm, cfg.BCryptCost)
 	authH := auth.NewHandler(authSvc, validator.New())
+	authH.SetAudit(auditSvc)
 	auth.RegisterRoutes(r.Group("/api/v1"), authH, tm)
+
+	activitylog.RegisterRoutes(r.Group("/api/v1"), auditH, auth.NewTokenParser(tm))
 
 	// User admin module wiring (reuses the auth token parser for RBAC)
 	userSvc := user.NewService(user.NewGORMRepository(db))
 	userH := user.NewHandler(userSvc, validator.New())
+	userH.SetAudit(auditSvc)
 	user.RegisterRoutes(r.Group("/api/v1"), userH, auth.NewTokenParser(tm))
 
 	categorySvc := category.NewService(category.NewGORMRepository(db))
 	categoryH := category.NewHandler(categorySvc, validator.New())
+	categoryH.SetAudit(auditSvc)
 	category.RegisterRoutes(r.Group("/api/v1"), categoryH, auth.NewTokenParser(tm))
 
 	productSvc := product.NewService(product.NewGORMRepository(db))
 	productH := product.NewHandler(productSvc, validator.New())
+	productH.SetAudit(auditSvc)
 	product.RegisterRoutes(r.Group("/api/v1"), productH, auth.NewTokenParser(tm))
 
 	inventorySvc := inventory.NewService(inventory.NewGORMRepository(db))
 	inventoryH := inventory.NewHandler(inventorySvc, validator.New())
+	inventoryH.SetAudit(auditSvc)
 	inventory.RegisterRoutes(r.Group("/api/v1"), inventoryH, auth.NewTokenParser(tm))
 
 	addr := ":" + cfg.Port
