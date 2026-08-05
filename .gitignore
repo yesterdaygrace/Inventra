@@ -1,0 +1,26 @@
+# Environment
+.env
+
+# OpenCode / Code Intelligence
+.codegraph/
+.omo/evidence/
+
+# Go build artifacts
+bin/
+dist/
+coverage.out
+
+# Web build artifacts
+node_modules/
+web/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
