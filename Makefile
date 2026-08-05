@@ -38,13 +38,16 @@ docker-up:
 docker-down:
 	@echo "TODO: implement docker compose down"
 
-# Seed database (placeholder)
-seed:
-	@echo "TODO: implement database seeding"
+# Database connection for seed targets (dockerized dev Postgres on 5433)
+SEED_DB := DB_HOST=localhost DB_PORT=5433 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=inventory DB_SSLMODE=disable JWT_SECRET=dev-only-seed-secret
 
-# Seed demo data (placeholder)
-seed-demo:
-	@echo "TODO: implement demo data seeding"
+# Seed base data (roles + default admin) idempotently
+seed: build
+	$(SEED_DB) $(GO) run ./cmd/seed
+
+# Seed opt-in demo data idempotently
+seed-demo: build
+	$(SEED_DB) $(GO) run ./cmd/seed demo
 
 # Generate Swagger docs (placeholder)
 swagger:
