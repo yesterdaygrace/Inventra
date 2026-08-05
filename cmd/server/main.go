@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"inventory/internal/auth"
+	"inventory/internal/category"
 	"inventory/internal/shared/config"
 	"inventory/internal/shared/database"
 	"inventory/internal/shared/logger"
@@ -56,6 +57,10 @@ func main() {
 	userSvc := user.NewService(user.NewGORMRepository(db))
 	userH := user.NewHandler(userSvc, validator.New())
 	user.RegisterRoutes(r.Group("/api/v1"), userH, auth.NewTokenParser(tm))
+
+	categorySvc := category.NewService(category.NewGORMRepository(db))
+	categoryH := category.NewHandler(categorySvc, validator.New())
+	category.RegisterRoutes(r.Group("/api/v1"), categoryH, auth.NewTokenParser(tm))
 
 	addr := ":" + cfg.Port
 	zlog.Info("inventory api listening", zap.String("addr", addr))

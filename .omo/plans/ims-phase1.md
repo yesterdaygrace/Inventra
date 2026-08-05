@@ -307,12 +307,12 @@ Commit: `feat(user): user admin routes`.
 End W4: user admin crud green.
 
 ### W5 - Category module (C5, P0)
-- [ ] **T5.1 - Category service + repo (CRUD + pagination)**
+- [x] **T5.1 - Category service + repo (CRUD + pagination)**
 Files: `internal/category/{model,repository,service}.go` (+ tests). CRUD, list with search + sort (name/created_at) + pagination.
 Acceptance: repo Create/Get/Update/Delete + paginated list; service deletes only when no products reference (else ErrConflict).
 QA happy: mock repo CRUD. QA failure: delete category in use -> ErrConflict — evidence test.
 Commit: `feat(category): category service + repo`.
-- [ ] **T5.2 - Category handlers + routes**
+- [x] **T5.2 - Category handlers + routes**
 Files: `internal/category/handler.go`, `category/router.go` (+ tests). Routes: POST/GET /categories, GET/PUT/DELETE /categories/:id, GET /categories/export (CSV).
 Acceptance: CRUD 200; export returns text/csv with Content-Disposition.
 QA happy: create->get->list roundtrip. QA failure: invalid body -> 400; export has header row — evidence test.
