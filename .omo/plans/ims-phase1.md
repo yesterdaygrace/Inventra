@@ -346,13 +346,13 @@ Commit: `feat(inventory): routes, history, low-stock, export`.
 End W7: inventory green. P0 backend core complete.
 
 ### W8 - Activity Log module (C10, P1)
-- [ ] **T8.1 - ActivityLog service + repo (write + paginated/filtered read)**
+- [x] **T8.1 - ActivityLog service + repo (write + paginated/filtered read)**
 References: design.md sidebar Activity Logs; Locked conventions. Files: `internal/activitylog/{model,repository,service}.go` (+ tests). Write on every auth + mutation (register, login, product/category/inventory create/update/delete, stock in/out); read endpoint filters by entity_type, entity_id, action, user_id, date range, paginated; ordered created_at desc.
 Acceptance: repo inserts + filters + paginates; service logs user_id+ip+details json. Failure-safe: a logging error NEVER fails the business operation (log + continue).
 QA happy: create product -> one activity_log row present. QA failure: logger down -> business op still succeeds — evidence test asserts txn committed despite log error.
 Commit: `feat(activitylog): write on actions + filtered read`.
 
-- [ ] **T8.2 - ActivityLog handlers + routes**
+- [x] **T8.2 - ActivityLog handlers + routes**
 Files: `internal/activitylog/handler.go`, `router.go` (+ tests). Routes: GET /activity-logs (admin, RBAC).
 Acceptance: returns envelope + pagination; filters apply.
 QA happy: list after seed-demo shows transactions. QA failure: non-admin -> 403 — evidence test.
