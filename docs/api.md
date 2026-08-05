@@ -71,8 +71,10 @@ Response envelope carries `pagination` object: `page`, `per_page`, `total`, `tot
 | `PUT /categories/:id` | – | – | – | ✔ |
 | `DELETE /categories/:id` | – | – | – | ✔ |
 | `GET /inventory` | – | ✔ | ✔ | ✔ |
-| `POST /inventory/transactions` | – | – | ✔ | ✔ |
+| `POST /inventory/stock-in` | – | – | ✔ | ✔ |
+| `POST /inventory/stock-out` | – | – | ✔ | ✔ |
 | `GET /inventory/transactions` | – | ✔ | ✔ | ✔ |
+| `GET /inventory/export` | – | ✔ | ✔ | ✔ |
 | `GET /dashboard/summary` | – | ✔ | ✔ | ✔ |
 | `GET /dashboard/activity` | – | ✔ | ✔ | ✔ |
 
@@ -223,17 +225,24 @@ Inventory: 1:1 with product (ProductID unique); transactions typed `IN`/`OUT`; Q
 
 ### GET `/api/v1/inventory` — any authenticated
 - **Query:** `page`, `per_page`, `product_id`, `low_stock=true`, `search` (product name/SKU).
-- **Response 200 (paginated):** `data: [ { product_id, product_name, product_sku, quantity, updated_at } ]` + `pagination`.
+- **Response 200 (paginated):** `data: [ { product_id, product_sku, product_name, quantity, updated_at } ]` + `pagination`.
+  Every product is returned (left-joined), with quantity `0` when no stock row exists yet.
 
-### POST `/api/v1/inventory/transactions` — STAFF / ADMIN (stock in/out)
-- **Request:** `{ "product_id": "*", "type": "IN"|"OUT" (required), "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional" }`
-- **Response 201:** `{ "id", "product_id", "type", "quantity", "unit_cost", "note", "created_at" }`.
-  Transaction committed atomically with the inventory quantity update.
-- **Errors:** 400 validation; 404 product; 409 insufficient stock on `OUT` (quantity would go below 0).
+### POST `/api/v1/inventory/stock-in` — STAFF / ADMIN
+- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional" }`
+- **Response 200:** `{ product_id, quantity, updated_at }`. Committed atomically with the history row.
+
+### POST `/api/v1/inventory/stock-out` — STAFF / ADMIN
+- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional" }`
+- **Response 200:** `{ product_id, quantity, updated_at }`.
+- **Errors:** 400 validation; 409 insufficient stock (quantity would go below 0), rolled back with no partial history row.
 
 ### GET `/api/v1/inventory/transactions` — any authenticated
 - **Query:** `page`, `per_page`, `product_id`, `type=IN|OUT`.
-- **Response 200 (paginated):** `data: [ { id, product_id, product_name, product_sku, type, quantity, unit_cost, note, user_id, created_at } ]` + `pagination`.
+- **Response 200 (paginated):** `data: [ { id, product_id, product_sku, product_name, type, quantity, unit_cost, note, user_id, created_at } ]` + `pagination`.
+
+### GET `/api/v1/inventory/export` — any authenticated
+- **Response 200:** CSV download (`attachment; filename=inventory_<ts>.csv`) with columns `product_id,sku,name,quantity,updated_at`.
 
 ---
 

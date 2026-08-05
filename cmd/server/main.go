@@ -10,6 +10,7 @@ import (
 
 	"inventory/internal/auth"
 	"inventory/internal/category"
+	"inventory/internal/inventory"
 	"inventory/internal/product"
 	"inventory/internal/shared/config"
 	"inventory/internal/shared/database"
@@ -66,6 +67,10 @@ func main() {
 	productSvc := product.NewService(product.NewGORMRepository(db))
 	productH := product.NewHandler(productSvc, validator.New())
 	product.RegisterRoutes(r.Group("/api/v1"), productH, auth.NewTokenParser(tm))
+
+	inventorySvc := inventory.NewService(inventory.NewGORMRepository(db))
+	inventoryH := inventory.NewHandler(inventorySvc, validator.New())
+	inventory.RegisterRoutes(r.Group("/api/v1"), inventoryH, auth.NewTokenParser(tm))
 
 	addr := ":" + cfg.Port
 	zlog.Info("inventory api listening", zap.String("addr", addr))

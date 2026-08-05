@@ -333,12 +333,12 @@ Commit: `feat(product): handlers, routes, csv export`.
 End W6: product green.
 
 ### W7 - Inventory module (C6, P0)
-- [ ] **T7.1 - Inventory service + repo (stock-in/out, atomic transaction)**
+- [x] **T7.1 - Inventory service + repo (stock-in/out, atomic transaction)**
 References: PRD #10 (transactions); #8 layering. Files: `internal/inventory/{model,repository,service}.go` (+ tests). StockIn/StockOut in a DB transaction: insert inventory_transactions + upsert inventory.Quantity atomically; reject stock-out > available.
 Acceptance: concurrent-safe quantity mutation via transaction; stock-out overdraw -> ErrConflict; creates history row.
 QA happy: mock/DB test stock-in then stock-out nets correct qty — evidence. QA failure: overdraw rolls back — evidence no partial row.
 Commit: `feat(inventory): stock in/out with db transaction`.
-- [ ] **T7.2 - Inventory handlers + routes + low-stock + history + CSV export**
+- [x] **T7.2 - Inventory handlers + routes + low-stock + history + CSV export**
 Files: `internal/inventory/handler.go`, `router.go`, `handler_test.go`. Routes: POST /inventory/stock-in|stock-out, GET /inventory (joined list, filter low-stock), GET /inventory/transactions (paginated, filter product/type/date), GET /inventory/export.
 Acceptance: endpoints return envelope; low-stock filter works; history paginated.
 QA happy: stock-in -> GET /inventory shows qty; overdraw -> 409. QA failure: invalid type -> 400 — evidence test.

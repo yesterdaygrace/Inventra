@@ -32,6 +32,22 @@ func (m *mockRepo) StockOut(mv Movement) (*Inventory, error) {
 	return nil, args.Error(1)
 }
 
+func (m *mockRepo) List(q ListQuery) ([]*InventoryView, int64, error) {
+	args := m.Called(q)
+	if views, ok := args.Get(0).([]*InventoryView); ok {
+		return views, args.Get(1).(int64), args.Error(2)
+	}
+	return nil, args.Get(1).(int64), args.Error(2)
+}
+
+func (m *mockRepo) Transactions(q TransactionQuery) ([]*TransactionView, int64, error) {
+	args := m.Called(q)
+	if views, ok := args.Get(0).([]*TransactionView); ok {
+		return views, args.Get(1).(int64), args.Error(2)
+	}
+	return nil, args.Get(1).(int64), args.Error(2)
+}
+
 func newSvc(repo Repository) *Service { return NewService(repo) }
 
 func TestStockInValidatesProduct(t *testing.T) {

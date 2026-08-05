@@ -2,6 +2,9 @@
 package inventory
 
 import (
+	"strings"
+
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -99,4 +102,84 @@ func (r *GORMRepository) StockOut(m Movement) (*Inventory, error) {
 		return nil, err
 	}
 	return &result, nil
+}
+
+// List returns a filtered, sorted, paginated joined inventory view (every
+// product left-joined with its stock row) plus the total match count. All
+// dynamic values are parameterized, so input cannot be injected.
+func (r *GORMRepository) List(q ListQuery) ([]*InventoryView, int64, error) {
+	db := r.db.Table("products").
+		Select("products.id AS product_id, products.sku AS product_sku, products.name AS product_name, COALESCE(inventory.quantity, 0) AS quantity, COALESCE(inventory.updated_at, products.created_at) AS updated_at").
+		Joins("LEFT JOIN inventory ON inventory.product_id = products.id")
+
+	if q.ProductID != uuid.Nil {
+		db = db.Where("products.id = ?", q.ProductID)
+	}
+	if q.Search != "" {
+		like := "%" + strings.ToLower(q.Search) + "%"
+		db = db.Where("(LOWER(products.name) LIKE ? OR LOWER(products.sku) LIKE ?)", like, like)
+	}
+	if q.LowStock {
+		db = db.Where("COALESCE(inventory.quantity, 0) <= products.low_stock_threshold")
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	p, per := normalizePage(q.Page, q.PerPage)
+	var views []*InventoryView
+	if err := db.Order("products.name ASC").
+		Offset((p - 1) * per).
+		Limit(per).
+		Scan(&views).Error; err != nil {
+		return nil, 0, err
+	}
+	return views, total, nil
+}
+
+// Transactions returns a filtered, paginated history of stock movements joined
+// with product identity. Filters are parameterized and the type value is
+// validated before reaching the query builder.
+func (r *GORMRepository) Transactions(q TransactionQuery) ([]*TransactionView, int64, error) {
+	db := r.db.Table("inventory_transactions AS t").
+		Select("t.id, t.product_id, p.sku AS product_sku, p.name AS product_name, t.type, t.quantity, t.unit_cost, t.note, t.user_id, t.created_at").
+		Joins("JOIN products p ON p.id = t.product_id")
+
+	if q.ProductID != uuid.Nil {
+		db = db.Where("t.product_id = ?", q.ProductID)
+	}
+	if q.Type != "" && q.Type != "IN" && q.Type != "OUT" {
+		return nil, 0, sharederr.ErrValidation
+	}
+	if q.Type != "" {
+		db = db.Where("t.type = ?", q.Type)
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	p, per := normalizePage(q.Page, q.PerPage)
+	var views []*TransactionView
+	if err := db.Order("t.created_at DESC, t.id DESC").
+		Offset((p - 1) * per).
+		Limit(per).
+		Scan(&views).Error; err != nil {
+		return nil, 0, err
+	}
+	return views, total, nil
+}
+
+// normalizePage clamps page/per-page to the shared defaults and cap.
+func normalizePage(page, perPage int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	return page, perPage
 }

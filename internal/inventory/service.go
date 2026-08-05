@@ -18,10 +18,53 @@ type Movement struct {
 	UserID    *uuid.UUID
 }
 
+// InventoryView is a product joined with its current stock quantity. Every
+// product is surfaced even when no inventory row exists yet (quantity 0).
+type InventoryView struct {
+	ProductID   uuid.UUID `gorm:"column:product_id"`
+	ProductSKU  string    `gorm:"column:product_sku"`
+	ProductName string    `gorm:"column:product_name"`
+	Quantity    int       `gorm:"column:quantity"`
+	UpdatedAt   string    `gorm:"column:updated_at"`
+}
+
+// TransactionView is a stock movement joined with its product identity.
+type TransactionView struct {
+	ID          uuid.UUID  `gorm:"column:id"`
+	ProductID   uuid.UUID  `gorm:"column:product_id"`
+	ProductSKU  string     `gorm:"column:product_sku"`
+	ProductName string     `gorm:"column:product_name"`
+	Type        string     `gorm:"column:type"`
+	Quantity    int        `gorm:"column:quantity"`
+	UnitCost    *float64   `gorm:"column:unit_cost"`
+	Note        *string    `gorm:"column:note"`
+	UserID      *uuid.UUID `gorm:"column:user_id"`
+	CreatedAt   string     `gorm:"column:created_at"`
+}
+
+// ListQuery filters and paginates the joined inventory view.
+type ListQuery struct {
+	ProductID uuid.UUID
+	Search    string // product name or SKU
+	LowStock  bool
+	Page      int
+	PerPage   int
+}
+
+// TransactionQuery filters and paginates the transaction history.
+type TransactionQuery struct {
+	ProductID uuid.UUID
+	Type      string // "", "IN" or "OUT"
+	Page      int
+	PerPage   int
+}
+
 // Repository abstracts persistence for the inventory service.
 type Repository interface {
 	StockIn(m Movement) (*Inventory, error)
 	StockOut(m Movement) (*Inventory, error)
+	List(q ListQuery) ([]*InventoryView, int64, error)
+	Transactions(q TransactionQuery) ([]*TransactionView, int64, error)
 }
 
 // Service orchestrates stock movements.
@@ -48,6 +91,16 @@ func (s *Service) StockOut(m Movement) (*Inventory, error) {
 		return nil, err
 	}
 	return s.repo.StockOut(m)
+}
+
+// List returns a filtered, paginated joined inventory view plus the total.
+func (s *Service) List(q ListQuery) ([]*InventoryView, int64, error) {
+	return s.repo.List(q)
+}
+
+// Transactions returns a filtered, paginated movement history plus the total.
+func (s *Service) Transactions(q TransactionQuery) ([]*TransactionView, int64, error) {
+	return s.repo.Transactions(q)
 }
 
 func validateMovement(m Movement) error {
