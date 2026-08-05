@@ -13,8 +13,10 @@ type (
 
 // Query carries the list filters and pagination for List.
 type Query struct {
-	Search  string // matches name or email (case-insensitive, substring)
-	Role    string // exact role name (empty = any)
-	Page    int
-	PerPage int
+	Name     string // substring match on name (case-insensitive)
+	Email    string // substring match on email (case-insensitive)
+	Role     string // exact role name (empty = any)
+	IsActive *bool  // nil = any
+	Page     int
+	PerPage  int
 }

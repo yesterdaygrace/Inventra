@@ -14,6 +14,7 @@ import (
 	"inventory/internal/shared/logger"
 	"inventory/internal/shared/router"
 	"inventory/internal/shared/validator"
+	"inventory/internal/user"
 )
 
 func main() {
@@ -50,6 +51,11 @@ func main() {
 	authSvc := auth.NewService(authRepo, tm, cfg.BCryptCost)
 	authH := auth.NewHandler(authSvc, validator.New())
 	auth.RegisterRoutes(r.Group("/api/v1"), authH, tm)
+
+	// User admin module wiring (reuses the auth token parser for RBAC)
+	userSvc := user.NewService(user.NewGORMRepository(db))
+	userH := user.NewHandler(userSvc, validator.New())
+	user.RegisterRoutes(r.Group("/api/v1"), userH, auth.NewTokenParser(tm))
 
 	addr := ":" + cfg.Port
 	zlog.Info("inventory api listening", zap.String("addr", addr))

@@ -34,6 +34,14 @@ func (m *mockRepo) FindByID(id uuid.UUID) (*User, error) {
 	return nil, args.Error(1)
 }
 
+func (m *mockRepo) FindByEmail(email string) (*User, error) {
+	args := m.Called(email)
+	if u, ok := args.Get(0).(*User); ok {
+		return u, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
 func (m *mockRepo) Update(u *User) error {
 	args := m.Called(u)
 	return args.Error(0)
@@ -58,11 +66,11 @@ func TestListPassesFilters(t *testing.T) {
 	m := new(mockRepo)
 	users := []*User{{Name: "Alice"}, {Name: "Bob"}}
 	m.On("List", mock.MatchedBy(func(q Query) bool {
-		return q.Search == "ali" && q.Role == "STAFF"
+		return q.Name == "ali" && q.Role == "STAFF"
 	})).Return(users, int64(2), nil)
 
 	svc := newSvc(m)
-	got, total, err := svc.List(Query{Search: "ali", Role: "staff"})
+	got, total, err := svc.List(Query{Name: "ali", Role: "staff"})
 	require.NoError(t, err)
 	assert.Len(t, got, 2)
 	assert.Equal(t, int64(2), total)
@@ -187,6 +195,54 @@ func TestDeactivatePropagatesRepoError(t *testing.T) {
 	assert.Error(t, err)
 	// No repo calls beyond FindByID should happen.
 	m.AssertNotCalled(t, "Update", mock.Anything)
+}
+
+func TestUpdateProfileNameOnly(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	u := &User{ID: id, Name: "Old", Email: "a@example.com", IsActive: true}
+	m.On("FindByID", id).Return(u, nil)
+	m.On("Update", mock.Anything).Return(nil)
+
+	got, err := newSvc(m).UpdateProfile(id, uuid.New(), "New", "", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "New", got.Name)
+	assert.Equal(t, "a@example.com", got.Email)
+}
+
+func TestUpdateProfileEmailCollision(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	other := uuid.New()
+	u := &User{ID: id, Email: "a@example.com"}
+	m.On("FindByID", id).Return(u, nil)
+	m.On("FindByEmail", "b@example.com").Return(&User{ID: other, Email: "b@example.com"}, nil)
+
+	_, err := newSvc(m).UpdateProfile(id, uuid.New(), "", " b@example.com ", nil)
+	assert.ErrorIs(t, err, sharederr.ErrConflict)
+}
+
+func TestUpdateProfileEmailOK(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	u := &User{ID: id, Email: "a@example.com"}
+	m.On("FindByID", id).Return(u, nil)
+	m.On("FindByEmail", "b@example.com").Return(nil, sharederr.ErrNotFound)
+	m.On("Update", mock.Anything).Return(nil)
+
+	got, err := newSvc(m).UpdateProfile(id, uuid.New(), "", "b@example.com", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "b@example.com", got.Email)
+}
+
+func TestUpdateProfileDeactivateSelf(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	m.On("FindByID", id).Return(&User{ID: id}, nil)
+
+	deactivate := false
+	_, err := newSvc(m).UpdateProfile(id, id, "", "", &deactivate)
+	assert.ErrorIs(t, err, sharederr.ErrConflict)
 }
 
 // compile-time interface check

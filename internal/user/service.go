@@ -3,6 +3,7 @@
 package user
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ type Repository interface {
 	// matching those filters (before paging).
 	List(q Query) ([]*User, int64, error)
 	FindByID(id uuid.UUID) (*User, error)
+	FindByEmail(email string) (*User, error)
 	Update(u *User) error
 	FindRoleByName(name string) (*Role, error)
 	CountAdmins() (int64, error)
@@ -33,7 +35,8 @@ func NewService(repo Repository) *Service {
 
 // List returns a page of users plus the total match count.
 func (s *Service) List(q Query) ([]*User, int64, error) {
-	q.Search = strings.TrimSpace(q.Search)
+	q.Name = strings.TrimSpace(q.Name)
+	q.Email = strings.TrimSpace(q.Email)
 	q.Role = strings.ToUpper(strings.TrimSpace(q.Role))
 	return s.repo.List(q)
 }
@@ -53,6 +56,65 @@ func (s *Service) UpdateName(id uuid.UUID, name string) (*User, error) {
 		return nil, err
 	}
 	u.Name = strings.TrimSpace(name)
+	if err := s.repo.Update(u); err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// UpdateProfile updates a user's name, email, and/or active state as an
+// admin. Empty fields are left unchanged. Email changes are guarded against
+// collisions with another account. Deactivation applies the same guards as
+// Deactivate (cannot deactivate self; cannot deactivate the last admin).
+func (s *Service) UpdateProfile(id, actorID uuid.UUID, name, email string, isActive *bool) (*User, error) {
+	u, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if name != "" {
+		if strings.TrimSpace(name) == "" {
+			return nil, sharederr.ErrValidation
+		}
+		u.Name = strings.TrimSpace(name)
+	}
+
+	if email != "" {
+		email = strings.ToLower(strings.TrimSpace(email))
+		if email != u.Email {
+			existing, err := s.repo.FindByEmail(email)
+			if err == nil && existing.ID != id {
+				return nil, sharederr.ErrConflict
+			}
+			if err != nil && !errors.Is(err, sharederr.ErrNotFound) {
+				return nil, err
+			}
+			u.Email = email
+		}
+	}
+
+	if isActive != nil {
+		if !*isActive {
+			if id == actorID {
+				return nil, sharederr.ErrConflict // cannot deactivate self
+			}
+			role, err := s.repo.FindRoleByName("ADMIN")
+			if err != nil {
+				return nil, err
+			}
+			if u.RoleID == role.ID {
+				admins, err := s.repo.CountAdmins()
+				if err != nil {
+					return nil, err
+				}
+				if admins <= 1 {
+					return nil, sharederr.ErrConflict // last admin
+				}
+			}
+		}
+		u.IsActive = *isActive
+	}
+
 	if err := s.repo.Update(u); err != nil {
 		return nil, err
 	}

@@ -25,12 +25,17 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 func (r *GORMRepository) List(q Query) ([]*User, int64, error) {
 	db := r.db.Model(&User{})
 
-	if q.Search != "" {
-		like := "%" + strings.ToLower(q.Search) + "%"
-		db = db.Where("LOWER(name) LIKE ? OR LOWER(email) LIKE ?", like, like)
+	if q.Name != "" {
+		db = db.Where("LOWER(name) LIKE ?", "%"+strings.ToLower(q.Name)+"%")
+	}
+	if q.Email != "" {
+		db = db.Where("LOWER(email) LIKE ?", "%"+strings.ToLower(q.Email)+"%")
 	}
 	if q.Role != "" {
 		db = db.Where("role_id IN (SELECT id FROM roles WHERE name = ?)", q.Role)
+	}
+	if q.IsActive != nil {
+		db = db.Where("is_active = ?", *q.IsActive)
 	}
 
 	var total int64
@@ -60,6 +65,18 @@ func (r *GORMRepository) List(q Query) ([]*User, int64, error) {
 func (r *GORMRepository) FindByID(id uuid.UUID) (*User, error) {
 	var u User
 	if err := r.db.Preload("Role").Where("id = ?", id).First(&u).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, sharederr.ErrNotFound
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+// FindByEmail returns a user by exact email address.
+func (r *GORMRepository) FindByEmail(email string) (*User, error) {
+	var u User
+	if err := r.db.Where("email = ?", email).First(&u).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}

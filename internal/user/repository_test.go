@@ -115,12 +115,19 @@ func TestRepo_ListSearchRolePagination(t *testing.T) {
 	createUser(t, db, "Carol Staff", "carol@example.com", staff.ID, true)
 	repo := NewGORMRepository(db)
 
-	// search by name/email
-	users, total, err := repo.List(Query{Search: "carol"})
+	// filter by name substring
+	users, total, err := repo.List(Query{Name: "carol"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Len(t, users, 1)
 	assert.Equal(t, "Carol Staff", users[0].Name)
+
+	// filter by email substring
+	users, total, err = repo.List(Query{Email: "bob"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	assert.Len(t, users, 1)
+	assert.Equal(t, "Bob Staff", users[0].Name)
 
 	// role filter
 	users, total, err = repo.List(Query{Role: "STAFF"})
@@ -135,7 +142,7 @@ func TestRepo_ListSearchRolePagination(t *testing.T) {
 	assert.Len(t, users, 1)
 
 	// no matches
-	users, total, err = repo.List(Query{Search: "zzz"})
+	users, total, err = repo.List(Query{Name: "zzz"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), total)
 	assert.Empty(t, users)
