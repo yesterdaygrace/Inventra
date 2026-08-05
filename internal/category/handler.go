@@ -9,20 +9,46 @@ import (
 	"github.com/google/uuid"
 
 	sharederr "inventory/internal/shared/errors"
+	"inventory/internal/shared/audit"
 	"inventory/internal/shared/export"
+	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/response"
 	"inventory/internal/shared/validator"
 )
 
 // Handler exposes category routes.
 type Handler struct {
-	svc *Service
-	val *validator.Validator
+	svc   *Service
+	val   *validator.Validator
+	audit audit.Recorder
 }
 
 // NewHandler wires the service and validator.
 func NewHandler(svc *Service, val *validator.Validator) *Handler {
-	return &Handler{svc: svc, val: val}
+	return &Handler{svc: svc, val: val, audit: audit.Nop{}}
+}
+
+// SetAudit wires an audit recorder (nil-safe; Nop by default).
+func (h *Handler) SetAudit(r audit.Recorder) {
+	if r != nil {
+		h.audit = r
+	}
+}
+
+// record captures an audit event for a mutation, attaching the acting user
+// and request IP. Details are nil-safe.
+func (h *Handler) record(c *gin.Context, action, entityID string, details gin.H) {
+	eid := entityID
+	uid := middleware.UserIDFromContext(c)
+	ip := c.ClientIP()
+	h.audit.Record(audit.Entry{
+		UserID:     &uid,
+		Action:     action,
+		EntityType: "category",
+		EntityID:   &eid,
+		Details:    details,
+		IP:         &ip,
+	})
 }
 
 type listCategoriesRequest struct {
@@ -136,6 +162,7 @@ func (h *Handler) Create(c *gin.Context) {
 		response.Error(c, err)
 		return
 	}
+	h.record(c, "CREATE", cat.ID.String(), gin.H{"name": cat.Name})
 	response.Created(c, categoryResponse(cat))
 }
 
@@ -162,6 +189,7 @@ func (h *Handler) Update(c *gin.Context) {
 		response.Error(c, err)
 		return
 	}
+	h.record(c, "UPDATE", cat.ID.String(), gin.H{"name": cat.Name})
 	response.OK(c, categoryResponse(cat))
 }
 
@@ -177,6 +205,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		response.Error(c, err)
 		return
 	}
+	h.record(c, "DELETE", id.String(), nil)
 	response.Message(c, "category deleted")
 }
 

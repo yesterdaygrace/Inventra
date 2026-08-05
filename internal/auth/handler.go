@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"inventory/internal/shared/audit"
 	"inventory/internal/shared/errors"
 	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/response"
@@ -14,13 +15,36 @@ import (
 
 // Handler exposes auth routes.
 type Handler struct {
-	svc *Service
-	val *validator.Validator
+	svc   *Service
+	val   *validator.Validator
+	audit audit.Recorder
 }
 
 // NewHandler wires the service and validator.
 func NewHandler(svc *Service, val *validator.Validator) *Handler {
-	return &Handler{svc: svc, val: val}
+	return &Handler{svc: svc, val: val, audit: audit.Nop{}}
+}
+
+// SetAudit wires an audit recorder (nil-safe; Nop by default).
+func (h *Handler) SetAudit(r audit.Recorder) {
+	if r != nil {
+		h.audit = r
+	}
+}
+
+// record captures an audit event for a mutation, attaching the acting user
+// and request IP. Details are nil-safe.
+func (h *Handler) record(c *gin.Context, action, entityID string, userID *uuid.UUID, details gin.H) {
+	eid := entityID
+	ip := c.ClientIP()
+	h.audit.Record(audit.Entry{
+		UserID:     userID,
+		Action:     action,
+		EntityType: "user",
+		EntityID:   &eid,
+		Details:    details,
+		IP:         &ip,
+	})
 }
 
 type registerRequest struct {
@@ -70,6 +94,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 	role, _ := h.svc.RoleName(user.ID)
+	h.record(c, "REGISTER", user.ID.String(), &user.ID, gin.H{"email": user.Email, "name": user.Name})
 	response.Created(c, userResponse(user, role))
 }
 
@@ -89,6 +114,9 @@ func (h *Handler) Login(c *gin.Context) {
 	if err != nil {
 		response.Error(c, err)
 		return
+	}
+	if res.User != nil {
+		h.record(c, "LOGIN", res.User.ID.String(), &res.User.ID, gin.H{"email": res.User.Email})
 	}
 	response.OK(c, loginResultResponse(res))
 }
@@ -154,6 +182,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		response.Error(c, err)
 		return
 	}
+	h.record(c, "CHANGE_PASSWORD", userID.String(), &userID, nil)
 	response.Message(c, "password changed")
 }
 
@@ -181,6 +210,7 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		return
 	}
 	role, _ := h.svc.RoleName(user.ID)
+	h.record(c, "UPDATE_PROFILE", user.ID.String(), &userID, gin.H{"name": user.Name, "email": user.Email})
 	response.OK(c, userResponse(user, role))
 }
 

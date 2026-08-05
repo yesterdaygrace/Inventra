@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	sharederr "inventory/internal/shared/errors"
+	"inventory/internal/shared/audit"
 	"inventory/internal/shared/export"
 	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/response"
@@ -18,12 +19,36 @@ import (
 )
 
 type Handler struct {
-	svc *Service
-	val *validator.Validator
+	svc   *Service
+	val   *validator.Validator
+	audit audit.Recorder
 }
 
 func NewHandler(svc *Service, val *validator.Validator) *Handler {
-	return &Handler{svc: svc, val: val}
+	return &Handler{svc: svc, val: val, audit: audit.Nop{}}
+}
+
+// SetAudit wires an audit recorder (nil-safe; Nop by default).
+func (h *Handler) SetAudit(r audit.Recorder) {
+	if r != nil {
+		h.audit = r
+	}
+}
+
+// record captures an audit event for a mutation, attaching the acting user
+// and request IP. Details are nil-safe.
+func (h *Handler) record(c *gin.Context, action, entityID string, details gin.H) {
+	eid := entityID
+	uid := middleware.UserIDFromContext(c)
+	ip := c.ClientIP()
+	h.audit.Record(audit.Entry{
+		UserID:     &uid,
+		Action:     action,
+		EntityType: "inventory",
+		EntityID:   &eid,
+		Details:    details,
+		IP:         &ip,
+	})
 }
 
 type listInventoryRequest struct {
@@ -180,11 +205,23 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 		return
 	}
 
+	h.record(c, "STOCK_"+kind, pid.String(), gin.H{
+		"product_id": pid.String(),
+		"quantity":   req.Quantity,
+		"note":       noteOrNil(req.Note),
+	})
 	response.OK(c, gin.H{
 		"product_id": inv.ProductID,
 		"quantity":   inv.Quantity,
 		"updated_at": inv.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 	})
+}
+
+func noteOrNil(n *string) any {
+	if n == nil {
+		return nil
+	}
+	return *n
 }
 
 // Transactions handles GET /inventory/transactions — paginated history.

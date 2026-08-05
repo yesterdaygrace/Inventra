@@ -1,4 +1,4 @@
-// Package activitylog provides activity tracking for audit trails.
+// Package activitylog provides audit-trail tracking of user actions.
 package activitylog
 
 import (
@@ -10,7 +10,6 @@ import (
 	"inventory/internal/auth"
 )
 
-// ActivityLog represents an audit log entry for user actions.
 type ActivityLog struct {
 	ID         uuid.UUID       `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
 	UserID     *uuid.UUID      `gorm:"type:uuid"`
