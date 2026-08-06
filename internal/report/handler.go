@@ -20,6 +20,14 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // Summary handles GET /reports/stock-summary.
+// @Tags reports
+// @Summary Stock summary report
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /reports/stock-summary [get]
 func (h *Handler) Summary(c *gin.Context) {
 	summary, err := h.svc.Summary()
 	if err != nil {
@@ -30,6 +38,14 @@ func (h *Handler) Summary(c *gin.Context) {
 }
 
 // Export handles GET /reports/export — streams category totals as CSV.
+// @Tags reports
+// @Summary Export category stock totals as CSV
+// @Accept json
+// @Produce text/csv
+// @Security BearerAuth
+// @Success 200
+// @Failure 401 {object} response.Body
+// @Router /reports/export [get]
 func (h *Handler) Export(c *gin.Context) {
 	headers, rows, err := h.svc.ExportRows()
 	if err != nil {
@@ -43,6 +59,14 @@ func (h *Handler) Export(c *gin.Context) {
 }
 
 // LowStock handles GET /reports/export-low-stock — streams low-stock items as CSV.
+// @Tags reports
+// @Summary Export low-stock items as CSV
+// @Accept json
+// @Produce text/csv
+// @Security BearerAuth
+// @Success 200
+// @Failure 401 {object} response.Body
+// @Router /reports/export-low-stock [get]
 func (h *Handler) LowStock(c *gin.Context) {
 	headers, rows, err := h.svc.LowStockRows()
 	if err != nil {

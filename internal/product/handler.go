@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/audit"
+	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/export"
 	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/response"
@@ -19,8 +19,8 @@ import (
 
 // Handler exposes product routes.
 type Handler struct {
-	svc  *Service
-	val  *validator.Validator
+	svc   *Service
+	val   *validator.Validator
 	audit audit.Recorder
 }
 
@@ -133,6 +133,22 @@ func toBoolPtr(v string) *bool {
 }
 
 // List handles GET /products.
+// @Tags products
+// @Summary List products
+// @Accept json
+// @Produce json
+// @Param q query string false "Search by name/SKU"
+// @Param category_id query string false "Filter by category UUID"
+// @Param min_price query number false "Minimum price"
+// @Param max_price query number false "Maximum price"
+// @Param low_stock query boolean false "Only low-stock items"
+// @Param is_archived query string false "Archive filter" Enums(true, false)
+// @Param sort query string false "Sort field/direction"
+// @Param page query int false "Page number" default(1)
+// @Param per_page query int false "Items per page" default(20)
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Router /products [get]
 func (h *Handler) List(c *gin.Context) {
 	var req listProductsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -192,6 +208,15 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Get handles GET /products/:id.
+// @Tags products
+// @Summary Get a product
+// @Accept json
+// @Produce json
+// @Param id path string true "Product ID"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Router /products/{id} [get]
 func (h *Handler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -207,6 +232,19 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // Create handles POST /products.
+// @Tags products
+// @Summary Create a product
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body createProductRequest true "Product payload"
+// @Success 201 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /products [post]
 func (h *Handler) Create(c *gin.Context) {
 	var req createProductRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -233,6 +271,20 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 // Update handles PUT /products/:id.
+// @Tags products
+// @Summary Update a product
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Product ID"
+// @Param body body updateProductRequest true "Product update payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /products/{id} [put]
 func (h *Handler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -261,6 +313,19 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 // Delete handles DELETE /products/:id.
+// @Tags products
+// @Summary Delete a product
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Product ID"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /products/{id} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -276,6 +341,12 @@ func (h *Handler) Delete(c *gin.Context) {
 }
 
 // Export handles GET /products/export — CSV download of all products.
+// @Tags products
+// @Summary Export products as CSV
+// @Accept json
+// @Produce text/csv
+// @Success 200
+// @Router /products/export [get]
 func (h *Handler) Export(c *gin.Context) {
 	prods, _, err := h.svc.List(ListQuery{PerPage: 1000})
 	if err != nil {

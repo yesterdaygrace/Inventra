@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/audit"
+	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/response"
 	"inventory/internal/shared/validator"
@@ -97,6 +97,22 @@ func userResponse(u *User) userEnvelope {
 }
 
 // List handles GET /users — admin-only, paginated/filtered.
+// @Tags users
+// @Summary List users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name query string false "Filter by name"
+// @Param email query string false "Filter by email"
+// @Param role query string false "Filter by role" Enums(ADMIN, STAFF)
+// @Param is_active query string false "Filter by active state" Enums(true, false)
+// @Param page query int false "Page number" default(1)
+// @Param per_page query int false "Items per page" default(20)
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Router /users [get]
 func (h *Handler) List(c *gin.Context) {
 	var req listUsersRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -157,6 +173,18 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Get handles GET /users/:id — admin-only.
+// @Tags users
+// @Summary Get a user
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "User ID"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Router /users/{id} [get]
 func (h *Handler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -172,6 +200,20 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // Update handles PUT /users/:id — admin-only.
+// @Tags users
+// @Summary Update a user
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "User ID"
+// @Param body body updateUserRequest true "User update payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /users/{id} [put]
 func (h *Handler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -200,6 +242,19 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 // Deactivate handles DELETE /users/:id — admin-only soft deactivate.
+// @Tags users
+// @Summary Deactivate a user
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "User ID"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /users/{id} [delete]
 func (h *Handler) Deactivate(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -217,6 +272,20 @@ func (h *Handler) Deactivate(c *gin.Context) {
 }
 
 // AssignRole handles PUT /users/:id/role — admin-only.
+// @Tags users
+// @Summary Assign a role to a user
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "User ID"
+// @Param body body assignRoleRequest true "Role assignment payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /users/{id}/role [put]
 func (h *Handler) AssignRole(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

@@ -22,6 +22,14 @@ func NewHandler(svc *Service) *Handler {
 }
 
 // Summary handles GET /dashboard/summary — all KPI cards and widgets.
+// @Tags dashboard
+// @Summary Dashboard KPIs and widgets
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /dashboard/summary [get]
 func (h *Handler) Summary(c *gin.Context) {
 	sum, err := h.svc.Summary()
 	if err != nil {
@@ -32,6 +40,16 @@ func (h *Handler) Summary(c *gin.Context) {
 }
 
 // InventoryMovement handles GET /dashboard/inventory-movement?days=.
+// @Tags dashboard
+// @Summary Inventory movement over time
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param days query int false "Lookback window in days" default(30)
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /dashboard/inventory-movement [get]
 func (h *Handler) InventoryMovement(c *gin.Context) {
 	days, err := movementDays(c.Query("days"))
 	if err != nil {
@@ -47,6 +65,14 @@ func (h *Handler) InventoryMovement(c *gin.Context) {
 }
 
 // CategoryDistribution handles GET /dashboard/category-distribution.
+// @Tags dashboard
+// @Summary Category distribution
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /dashboard/category-distribution [get]
 func (h *Handler) CategoryDistribution(c *gin.Context) {
 	payload, err := h.svc.CategoryDistribution()
 	if err != nil {
@@ -57,6 +83,16 @@ func (h *Handler) CategoryDistribution(c *gin.Context) {
 }
 
 // TopSelling handles GET /dashboard/top-selling?limit=.
+// @Tags dashboard
+// @Summary Top selling products
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param limit query int false "Number of results" default(5)
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /dashboard/top-selling [get]
 func (h *Handler) TopSelling(c *gin.Context) {
 	limit, err := topLimit(c.Query("limit"))
 	if err != nil {

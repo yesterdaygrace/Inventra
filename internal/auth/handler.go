@@ -73,6 +73,15 @@ type updateProfileRequest struct {
 }
 
 // Register handles POST /auth/register.
+// @Tags auth
+// @Summary Register a new account
+// @Accept json
+// @Produce json
+// @Param body body registerRequest true "Registration payload"
+// @Success 201 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /auth/register [post]
 func (h *Handler) Register(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -84,11 +93,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := h.svc.Register(RegisterRequest{
-		Name:     req.Name,
-		Email:    req.Email,
-		Password: req.Password,
-	})
+	user, err := h.svc.Register(RegisterRequest(req))
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -99,6 +104,15 @@ func (h *Handler) Register(c *gin.Context) {
 }
 
 // Login handles POST /auth/login.
+// @Tags auth
+// @Summary Log in
+// @Accept json
+// @Produce json
+// @Param body body loginRequest true "Login credentials"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /auth/login [post]
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -122,6 +136,15 @@ func (h *Handler) Login(c *gin.Context) {
 }
 
 // Refresh handles POST /auth/refresh.
+// @Tags auth
+// @Summary Refresh access token
+// @Accept json
+// @Produce json
+// @Param body body refreshRequest true "Refresh token"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /auth/refresh [post]
 func (h *Handler) Refresh(c *gin.Context) {
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -142,6 +165,15 @@ func (h *Handler) Refresh(c *gin.Context) {
 }
 
 // Logout handles POST /auth/logout.
+// @Tags auth
+// @Summary Log out
+// @Accept json
+// @Produce json
+// @Param body body refreshRequest true "Refresh token"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /auth/logout [post]
 func (h *Handler) Logout(c *gin.Context) {
 	var req refreshRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -161,6 +193,16 @@ func (h *Handler) Logout(c *gin.Context) {
 }
 
 // ChangePassword handles POST /auth/change-password.
+// @Tags auth
+// @Summary Change password
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body changePasswordRequest true "Password change payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /auth/change-password [post]
 func (h *Handler) ChangePassword(c *gin.Context) {
 	userID := middleware.UserIDFromContext(c)
 	if userID == uuid.Nil {
@@ -187,6 +229,16 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 }
 
 // UpdateProfile handles PUT /auth/profile.
+// @Tags auth
+// @Summary Update own profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body updateProfileRequest true "Profile update payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /auth/profile [put]
 func (h *Handler) UpdateProfile(c *gin.Context) {
 	userID := middleware.UserIDFromContext(c)
 	if userID == uuid.Nil {
@@ -215,6 +267,14 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 }
 
 // Me handles GET /auth/me.
+// @Tags auth
+// @Summary Get current user
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /auth/me [get]
 func (h *Handler) Me(c *gin.Context) {
 	userID := middleware.UserIDFromContext(c)
 	if userID == uuid.Nil {

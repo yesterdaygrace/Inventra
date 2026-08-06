@@ -71,6 +71,24 @@ func activityResponse(l *ActivityLog) activityEnvelope {
 }
 
 // List handles GET /activity-logs (admin).
+// @Tags activity
+// @Summary List audit activities
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param user_id query string false "Filter by user id"
+// @Param entity_type query string false "Filter by entity type"
+// @Param entity_id query string false "Filter by entity id"
+// @Param action query string false "Filter by action"
+// @Param from query string false "Start time (RFC3339)"
+// @Param to query string false "End time (RFC3339)"
+// @Param page query int false "Page number" default(1)
+// @Param per_page query int false "Items per page" default(20)
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Router /activity-logs [get]
 func (h *Handler) List(c *gin.Context) {
 	var req listRequest
 	if err := c.ShouldBindQuery(&req); err != nil {

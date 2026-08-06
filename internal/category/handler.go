@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/audit"
+	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/export"
 	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/response"
@@ -87,6 +87,17 @@ func categoryResponse(c *Category) categoryEnvelope {
 }
 
 // List handles GET /categories — public, paginated/filtered/sorted.
+// @Tags categories
+// @Summary List categories
+// @Accept json
+// @Produce json
+// @Param name query string false "Filter by name"
+// @Param sort query string false "Sort field/direction" Enums(name,created_at,-name,-created_at)
+// @Param page query int false "Page number" default(1)
+// @Param per_page query int false "Items per page" default(20)
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Router /categories [get]
 func (h *Handler) List(c *gin.Context) {
 	var req listCategoriesRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -131,6 +142,15 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // Get handles GET /categories/:id — public read.
+// @Tags categories
+// @Summary Get a category
+// @Accept json
+// @Produce json
+// @Param id path string true "Category ID"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Router /categories/{id} [get]
 func (h *Handler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -146,6 +166,18 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // Create handles POST /categories — admin only.
+// @Tags categories
+// @Summary Create a category
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body createCategoryRequest true "Category payload"
+// @Success 201 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /categories [post]
 func (h *Handler) Create(c *gin.Context) {
 	var req createCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -167,6 +199,20 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 // Update handles PUT /categories/:id — admin only.
+// @Tags categories
+// @Summary Update a category
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Category ID"
+// @Param body body updateCategoryRequest true "Category update payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /categories/{id} [put]
 func (h *Handler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -195,6 +241,19 @@ func (h *Handler) Update(c *gin.Context) {
 
 // Delete handles DELETE /categories/:id — admin only. Fails with 409 when
 // products still reference the category.
+// @Tags categories
+// @Summary Delete a category
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Category ID"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /categories/{id} [delete]
 func (h *Handler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -210,6 +269,12 @@ func (h *Handler) Delete(c *gin.Context) {
 }
 
 // Export handles GET /categories/export — CSV download.
+// @Tags categories
+// @Summary Export categories as CSV
+// @Accept json
+// @Produce text/csv
+// @Success 200
+// @Router /categories/export [get]
 func (h *Handler) Export(c *gin.Context) {
 	cats, _, err := h.svc.List(ListQuery{PerPage: 1000})
 	if err != nil {

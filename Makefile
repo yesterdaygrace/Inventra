@@ -53,9 +53,9 @@ seed: build
 seed-demo: build
 	$(SEED_DB) $(GO) run ./cmd/seed demo
 
-# Generate Swagger docs (placeholder)
+# Regenerate OpenAPI docs into docs/swagger
 swagger:
-	@echo "TODO: implement swagger generation"
+	$(GO) run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/server/main.go -o docs/swagger
 
 # Pre-commit checks
 pre-commit: build test lint

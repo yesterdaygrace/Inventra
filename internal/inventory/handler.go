@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/audit"
+	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/export"
 	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/response"
@@ -103,6 +103,20 @@ func parseUUID(raw string) (uuid.UUID, bool) {
 }
 
 // List handles GET /inventory — joined product/stock view with filters.
+// @Tags inventory
+// @Summary List current stock levels
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param product_id query string false "Filter by product UUID"
+// @Param search query string false "Search by product name/SKU"
+// @Param low_stock query boolean false "Only low-stock items"
+// @Param page query int false "Page number" default(1)
+// @Param per_page query int false "Items per page" default(20)
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /inventory [get]
 func (h *Handler) List(c *gin.Context) {
 	var req listInventoryRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -151,11 +165,36 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 // StockIn handles POST /inventory/stock-in.
+// @Tags inventory
+// @Summary Record stock-in movement
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body stockRequest true "Stock-in payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Router /inventory/stock-in [post]
 func (h *Handler) StockIn(c *gin.Context) {
 	h.mutate(c, "IN")
 }
 
 // StockOut handles POST /inventory/stock-out.
+// @Tags inventory
+// @Summary Record stock-out movement
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body stockRequest true "Stock-out payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /inventory/stock-out [post]
 func (h *Handler) StockOut(c *gin.Context) {
 	h.mutate(c, "OUT")
 }
@@ -225,6 +264,19 @@ func noteOrNil(n *string) any {
 }
 
 // Transactions handles GET /inventory/transactions — paginated history.
+// @Tags inventory
+// @Summary List inventory movement history
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param product_id query string false "Filter by product UUID"
+// @Param type query string false "Movement type" Enums(IN, OUT)
+// @Param page query int false "Page number" default(1)
+// @Param per_page query int false "Items per page" default(20)
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /inventory/transactions [get]
 func (h *Handler) Transactions(c *gin.Context) {
 	var req transactionsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -277,6 +329,14 @@ func (h *Handler) Transactions(c *gin.Context) {
 }
 
 // Export handles GET /inventory/export — CSV of current stock levels.
+// @Tags inventory
+// @Summary Export current stock levels as CSV
+// @Accept json
+// @Produce text/csv
+// @Security BearerAuth
+// @Success 200
+// @Failure 401 {object} response.Body
+// @Router /inventory/export [get]
 func (h *Handler) Export(c *gin.Context) {
 	views, _, err := h.svc.List(ListQuery{PerPage: 1000})
 	if err != nil {
