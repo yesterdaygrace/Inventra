@@ -62,6 +62,30 @@ func TestSummaryOK(t *testing.T) {
 	assert.Equal(t, float64(1), data["total_categories"])
 }
 
+func TestActivityOK(t *testing.T) {
+	m := new(mockRepo)
+	m.On("Activities", 0, 0).Return([]*RecentActivity{{Action: "CREATE"}}, int64(1), nil)
+	r := setupEngine(m)
+	w := doReq(t, r, "/api/v1/dashboard/activity")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.True(t, body["success"].(bool))
+	items := body["data"].([]any)
+	require.Len(t, items, 1)
+	pg := body["pagination"].(map[string]any)
+	assert.Equal(t, float64(1), pg["total"])
+}
+
+func TestActivityServiceError(t *testing.T) {
+	m := new(mockRepo)
+	m.On("Activities", 0, 0).Return(nil, int64(0), errBoom)
+	r := setupEngine(m)
+	w := doReq(t, r, "/api/v1/dashboard/activity")
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
 func TestSummaryServiceError(t *testing.T) {
 	m := new(mockRepo)
 	m.On("CountProducts").Return(int64(0), errBoom)

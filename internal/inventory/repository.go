@@ -56,6 +56,9 @@ func (r *GORMRepository) StockIn(m Movement) (*Inventory, error) {
 		return nil
 	})
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			return nil, sharederr.ErrNotFound
+		}
 		return nil, err
 	}
 	return &result, nil
@@ -182,4 +185,13 @@ func normalizePage(page, perPage int) (int, int) {
 		perPage = 20
 	}
 	return page, perPage
+}
+
+// isForeignKeyViolation reports whether err is a PostgreSQL FK constraint
+// violation (SQLSTATE 23503), e.g. stock movement referencing a deleted product.
+func isForeignKeyViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "violates foreign key constraint")
 }

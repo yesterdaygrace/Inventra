@@ -85,6 +85,17 @@ func TestStockOutOverdrawRollsBack(t *testing.T) {
 	assert.Equal(t, int64(1), countTx(t, db, p.ID), "no partial OUT history row")
 }
 
+func TestStockInDeletedProductNotFound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB test in short mode")
+	}
+	_, repo, p := setupForRepo(t)
+
+	require.NoError(t, repo.db.Delete(&product.Product{}, p.ID).Error)
+	_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 1})
+	assert.ErrorIs(t, err, sharederr.ErrNotFound, "stock-in on deleted product -> not found, not 500")
+}
+
 func TestStockOutNoRowConflict(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DB test in short mode")

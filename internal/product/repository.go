@@ -20,13 +20,18 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 	return &GORMRepository{db: db}
 }
 
-// Create persists a new product, translating unique-SKU violations.
+// Create persists a new product, translating unique-SKU and category FK
+// violations so API clients receive typed errors instead of a generic 500.
 func (r *GORMRepository) Create(p *Product) error {
 	if err := r.db.Create(p).Error; err != nil {
-		if isUniqueViolation(err) {
+		switch {
+		case isUniqueViolation(err):
 			return sharederr.ErrConflict
+		case isForeignKeyViolation(err):
+			return sharederr.ErrNotFound
+		default:
+			return err
 		}
-		return err
 	}
 	return nil
 }
@@ -43,13 +48,18 @@ func (r *GORMRepository) Get(id uuid.UUID) (*Product, error) {
 	return &p, nil
 }
 
-// Update persists product changes, translating unique-SKU violations.
+// Update persists product changes, translating unique-SKU and category FK
+// violations into typed errors instead of a generic 500.
 func (r *GORMRepository) Update(p *Product) error {
 	if err := r.db.Save(p).Error; err != nil {
-		if isUniqueViolation(err) {
+		switch {
+		case isUniqueViolation(err):
 			return sharederr.ErrConflict
+		case isForeignKeyViolation(err):
+			return sharederr.ErrNotFound
+		default:
+			return err
 		}
-		return err
 	}
 	return nil
 }
@@ -173,4 +183,13 @@ func isUniqueViolation(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
+}
+
+// isForeignKeyViolation reports whether err is a PostgreSQL FK constraint
+// violation (SQLSTATE 23503), e.g. a product referencing a deleted category.
+func isForeignKeyViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "violates foreign key constraint")
 }

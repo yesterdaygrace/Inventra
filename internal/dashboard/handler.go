@@ -39,6 +39,54 @@ func (h *Handler) Summary(c *gin.Context) {
 	response.OK(c, sum)
 }
 
+// activityQuery binds the pagination params for the activity feed.
+type activityQuery struct {
+	Page    int `form:"page"`
+	PerPage int `form:"per_page"`
+}
+
+// Activity handles GET /dashboard/activity — paginated recent audit events.
+// @Tags dashboard
+// @Summary Recent activity feed
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "Page number"
+// @Param per_page query int false "Items per page"
+// @Success 200 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Router /dashboard/activity [get]
+func (h *Handler) Activity(c *gin.Context) {
+	var q activityQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+	items, total, err := h.svc.Activities(q.Page, q.PerPage)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	page := q.Page
+	if page < 1 {
+		page = 1
+	}
+	perPage := q.PerPage
+	if perPage < 1 {
+		perPage = 20
+	}
+	totalPages := 0
+	if perPage > 0 {
+		totalPages = int((total + int64(perPage) - 1) / int64(perPage))
+	}
+	response.Paginated(c, items, &response.Pagination{
+		Page:       page,
+		PerPage:    perPage,
+		Total:      total,
+		TotalPages: totalPages,
+	})
+}
+
 // InventoryMovement handles GET /dashboard/inventory-movement?days=.
 // @Tags dashboard
 // @Summary Inventory movement over time

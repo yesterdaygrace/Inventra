@@ -44,6 +44,12 @@ func (m *mockRepo) RecentActivities(limit int) ([]*RecentActivity, error) {
 	return items, args.Error(1)
 }
 
+func (m *mockRepo) Activities(page, perPage int) ([]*RecentActivity, int64, error) {
+	args := m.Called(page, perPage)
+	items, _ := args.Get(0).([]*RecentActivity)
+	return items, args.Get(1).(int64), args.Error(2)
+}
+
 func (m *mockRepo) TopSellers(limit int) ([]*TopSeller, error) {
 	args := m.Called(limit)
 	items, _ := args.Get(0).([]*TopSeller)
@@ -91,6 +97,15 @@ func TestSummaryComposesAllCards(t *testing.T) {
 	assert.Equal(t, StockHealth{Healthy: 10, Low: 1, Critical: 1}, sum.WarehouseHealth)
 	assert.Len(t, sum.RecentActivities, 1)
 	assert.Len(t, sum.LowStockItems, 1)
+}
+
+func TestActivitiesReturnsPaginatedFeed(t *testing.T) {
+	m := new(mockRepo)
+	m.On("Activities", 1, 20).Return([]*RecentActivity{{Action: "CREATE"}}, int64(3), nil)
+	items, total, err := NewService(m).Activities(1, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	require.Len(t, items, 1)
 }
 
 func TestSummaryPropagatesError(t *testing.T) {

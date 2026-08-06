@@ -22,6 +22,7 @@ type Repository interface {
 	InventoryValue() (float64, error)
 	LowStockItems() ([]*LowStockItem, error)
 	RecentActivities(limit int) ([]*RecentActivity, error)
+	Activities(page, perPage int) ([]*RecentActivity, int64, error)
 	TopSellers(limit int) ([]*TopSeller, error)
 	InventoryMovement(since time.Time) ([]*DayMovement, error)
 	CategoryDistribution() ([]*CategoryCount, error)
@@ -100,6 +101,11 @@ func (s *Service) Summary() (*Summary, error) {
 		RecentActivities: recent,
 		LowStockItems:    lowStock,
 	}, nil
+}
+
+// Activities returns a paginated, newest-first page of audit events.
+func (s *Service) Activities(page, perPage int) ([]*RecentActivity, int64, error) {
+	return s.repo.Activities(page, perPage)
 }
 
 // InventoryMovement returns per-day in/out/net/ending series for the last

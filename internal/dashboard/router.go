@@ -14,6 +14,7 @@ func RegisterRoutes(group *gin.RouterGroup, h *Handler, parser middleware.Claims
 	dash.Use(middleware.Auth(parser))
 	{
 		dash.GET("/summary", h.Summary)
+		dash.GET("/activity", h.Activity)
 		dash.GET("/inventory-movement", h.InventoryMovement)
 		dash.GET("/category-distribution", h.CategoryDistribution)
 		dash.GET("/top-selling", h.TopSelling)

@@ -85,6 +85,38 @@ func (r *GORMRepository) RecentActivities(limit int) ([]*RecentActivity, error) 
 	return items, err
 }
 
+// Activities returns a paginated, newest-first page of audit events plus the
+// total count. Backs the documented GET /dashboard/activity feed.
+func (r *GORMRepository) Activities(page, perPage int) ([]*RecentActivity, int64, error) {
+	var total int64
+	if err := r.db.Raw(`SELECT COUNT(*) FROM activity_logs`).Scan(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	p, per := normalizePage(page, perPage)
+	var items []*RecentActivity
+	err := r.db.Raw(`
+		SELECT l.id, l.user_id, u.name AS user_name, l.action, l.entity_type,
+			l.entity_id, l.created_at
+		FROM activity_logs l
+		LEFT JOIN users u ON u.id = l.user_id
+		ORDER BY l.created_at DESC, l.id DESC
+		LIMIT ? OFFSET ?`, per, (p-1)*per).Scan(&items).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+func normalizePage(page, perPage int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	return page, perPage
+}
+
 // TopSellers aggregates OUT movements per product, most sold first.
 func (r *GORMRepository) TopSellers(limit int) ([]*TopSeller, error) {
 	var items []*TopSeller
