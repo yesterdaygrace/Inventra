@@ -17,10 +17,11 @@ test-cover:
 	$(GO) test -coverprofile=coverage.out ./...
 	$(GO) tool cover -html=coverage.out -o coverage.html
 
-# Run the server (once implemented)
+# Run the server. Override the host port with API_PORT (default 8080):
+# API_PORT=8090 DEMO_MODE=true make run
 run:
 	@test -f cmd/server/main.go || { echo "cmd/server not yet implemented"; exit 0; }
-	$(SEED_DB) DEMO_MODE=$(DEMO_MODE) $(GO) run ./cmd/server
+	$(SEED_DB) DEMO_MODE=$(DEMO_MODE) PORT=$(API_PORT) $(GO) run ./cmd/server
 
 # Development mode with auto-reload (placeholder)
 dev:
