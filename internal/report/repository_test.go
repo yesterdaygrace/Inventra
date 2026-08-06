@@ -140,6 +140,22 @@ func TestRepoStockSummaryLowStockList(t *testing.T) {
 	assert.Equal(t, 5, it.Threshold)
 }
 
+func TestRepoStockSummaryEmptyState(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB test in short mode")
+	}
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(testModels...))
+	repo := NewGORMRepository(db)
+
+	sum, err := repo.StockSummary()
+	require.NoError(t, err)
+	require.NotNil(t, sum.Categories)
+	require.NotNil(t, sum.LowStock)
+	assert.Empty(t, sum.Categories)
+	assert.Empty(t, sum.LowStock)
+}
+
 func TestRepoCountProductsAndValue(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DB test in short mode")

@@ -44,6 +44,12 @@ func (r *GORMRepository) StockSummary() (*StockSummary, error) {
 	if err != nil {
 		return nil, err
 	}
+	if lowStock == nil {
+		lowStock = []*LowStockItem{}
+	}
+	if categories == nil {
+		categories = []*CategorySummary{}
+	}
 
 	return &StockSummary{Categories: categories, LowStock: lowStock}, nil
 }
