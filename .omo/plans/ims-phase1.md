@@ -380,36 +380,37 @@ Commit: `feat(reports): stock summary + csv export`.
 End W9: dashboard + reports green. P1 backend complete.
 
 ### W10 - Docs + Infra (C8, P3)
-- [ ] **T10.0 - SPEC-FIRST: docs/deployment.md**
+- [x] **T10.0 - SPEC-FIRST: docs/deployment.md**
 References: PRD Milestone 11-12; user doc priority P3. Files: `docs/deployment.md` (docker compose topology, env vars, volume strategy, Makefile targets, CI pipeline steps, local vs CI differences, secrets note for JWT_SECRET).
 Acceptance: doc matches T10.2/T10.3 implementation exactly; a fresh reader can `make docker-up` from it.
 QA happy: deployment.md steps reproduce a working stack — evidence docker-up. QA failure: doc omits an env var compose requires -> F1 flags.
 Commit: `docs(deployment): docker + ci runbook`.
 
-- [ ] **T10.1 - Swagger (Swaggo) + API docs**
+- [x] **T10.1 - Swagger (Swaggo) + API docs**
 References: PRD #15 (API doc), #17 DoD; Milestone 10/11. Files: swaggo annotations on all handlers; `docs/swagger/doc.go`; `cmd/server` registers gin-swagger at /swagger/*any; Makefile `swagger`.
 Acceptance: `swag init` (in `swag init -g cmd/server/main.go -o docs/swagger`) builds docs without error; `GET /swagger/index.html` serves UI; every route documented.
 QA happy: hit /swagger/index.html -> 200 HTML. QA failure: a handler missing annotations -> swag init fails or route absent from docs — evidence swagger json includes every route.
 Commit: `docs(swagger): annotate and serve openapi`.
 
-- [ ] **T10.2 - Docker backend + compose + Makefile docker targets**
+- [x] **T10.2 - Docker backend + compose + Makefile docker targets**
 References: PRD #3 (dockerized app), Milestone 11. Files: `Dockerfile` (multi-stage golang:1.24-alpine build -> alpine runtime), `docker-compose.yml` (postgres:17-alpine healthcheck + named volume, api depends_on healthy, web), `.env.example`, Makefile docker-up/down/logs.
 Acceptance: `docker compose up -d db api` -> api healthy + /healthz 200 from container; DB persists across `docker compose down` (volume).
 QA happy: full compose up, curl api:PORT/healthz 200. QA failure: api starts before db healthy -> retry/healthcheck handles — evidence compose logs show depends_on gating.
 Commit: `feat(docker): multi-stage api image + compose`.
 
-- [ ] **T10.3 - GitHub Actions CI**
+- [x] **T10.3 - GitHub Actions CI**
 References: PRD Milestone 12; PRD #17 (gofmt + lint pass). Files: `.github/workflows/ci.yml`. Jobs: gofmt check, go vet, golangci-lint, go test -cover with 80% gate (`-covermode=atomic -coverprofile && awk` block), rebuild + tsc strict + vite build.
 Acceptance: workflow file valid YAML; runs on push/PR; coverage gate computed correctly.
 QA happy: `actionlint` or YAML parse ok; (local) `go test -cover` shows >=80%. QA failure: coverage <80% -> CI step fails — evidence: gate line in workflow.
 Commit: `ci(github-actions): lint, vet, test-coverage gate, builds`.
 
-- [ ] **T10.4 - README + ER diagram + install guide**
+- [x] **T10.4 - README + ER diagram + install guide**
 References: PRD #15 (README, ER diagram, install guide). Files: `docs/er.md` (mermaid), `README.md` (setup, architecture #8, folder #9, seed/admin creds, security note to change Admin123!).
 Acceptance: README documents prerequisites, env, `make` targets, docker run, seed credentials with a clear "change the default admin password" warning.
 QA happy: README links resolve (er.md exists). QA failure: missing section -> markdown lint. 
 Commit: `docs(readme): setup, architecture, er diagram`.
-End W10: infra green. `make docker-up` brings the whole system up.
+End W9: dashboard + reports green. P1 backend complete.
+End W10: infra green (T10.0-T10.4). swagger served, docker stack verified, CI workflows committed, README+ER done. `make docker-up` brings the whole system up.
 
 ### W11 - Frontend foundation + design system (C9, P2/P3)
 - [ ] **T11.0 - SPEC-FIRST: docs/frontend.md**
