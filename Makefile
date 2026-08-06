@@ -1,4 +1,4 @@
-.PHONY: dev build test test-cover lint run docker-up docker-down seed seed-demo swagger pre-commit
+.PHONY: dev build test test-cover lint run docker-up docker-down docker-logs seed seed-demo swagger pre-commit
 
 # Go toolchain
 GOTOOLCHAIN := go1.24.0
@@ -30,13 +30,17 @@ dev:
 lint:
 	@echo "TODO: implement golangci-lint"
 
-# Start Docker services (placeholder)
+# Start the containerized stack (db + api)
 docker-up:
-	@echo "TODO: implement docker compose up"
+	docker compose up -d --build
 
-# Stop Docker services (placeholder)
+# Stop the stack (keeps the named volume)
 docker-down:
-	@echo "TODO: implement docker compose down"
+	docker compose down
+
+# Tail API logs
+docker-logs:
+	docker compose logs -f api
 
 # Database connection for seed targets (dockerized dev Postgres on 5433)
 SEED_DB := DB_HOST=localhost DB_PORT=5433 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=inventory DB_SSLMODE=disable JWT_SECRET=dev-only-seed-secret

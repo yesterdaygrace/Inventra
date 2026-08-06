@@ -28,9 +28,13 @@ Two runtimes compose the stack. Both are fully containerized.
 ```
 
 - **api** — the Go HTTP service (`cmd/server`). Multi-stage image
-  (`golang:1.24-alpine` build → `alpine` runtime). Exposes `:8080`.
-- **db** — PostgreSQL 17 on Alpine. Internal `:5432`; host port mapped to
-  `5433` to coexist with other local Postgres instances.
+  (`golang:1.24-alpine` build → `alpine` runtime). Container port `8080`;
+  host port `8080` by default, overridable via `API_PORT`.
+- **db** — PostgreSQL 17 on Alpine. Container port `5432`; host port
+  `5432` by default, overridable via `DB_PORT`. (On the reference dev box
+  the unrelated `dapense-app` holds `:8080` and the standalone dev
+  `inventory-pg` holds `:5433`, so run
+  `API_PORT=8081 DB_PORT=5434 make docker-up` there.)
 - **Storage** — a Docker **named volume** (`inventra_pgdata`) is the only
   persistent state. `docker compose down` must NOT remove it; only
   `docker compose down -v` wipes data.
