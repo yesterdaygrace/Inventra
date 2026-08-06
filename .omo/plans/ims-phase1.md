@@ -360,19 +360,19 @@ Commit: `feat(activitylog): admin routes`.
 End W8: activity log green.
 
 ### W9 - Dashboard + Reports (C7 + C11, P1)
-- [ ] **T9.1 - Dashboard service + repo (aggregates: PRD KPIs + extended)**
+- [x] **T9.1 - Dashboard service + repo (aggregates: PRD KPIs + extended)**
 References: PRD #125-129; design.md #96-128; Locked conventions. Files: `internal/dashboard/{model,repository,service}.go` (+ tests). Aggregates computed on read (no cache — decision): total products (non-archived), total categories, inventory value (sum qty*unit cost of last stock-in or product.price), low stock summary (count + items), recent activities (from activity_logs), pending restock (low-stock count), warehouse health (healthy/low/critical counts), top selling (sum OUT qty per product, top N), inventory movement (STOCK_IN/STOCK_OUT/net/ending per day for N days default 30), category distribution (product count per category).
 Acceptance: repo SQL aggregates correct on seeded data; service composes summary + chart payloads with exact shapes {labels:[],datasets:[]}.
 QA happy: mock/DB test computes known totals from fixed seeds (assert exact numbers). QA failure: wrong aggregate math -> test fails — evidence expected-vs-actual.
 Commit: `feat(dashboard): aggregate service + repo`.
 
-- [ ] **T9.2 - Dashboard handlers + routes**
+- [x] **T9.2 - Dashboard handlers + routes**
 Files: `internal/dashboard/handler.go`, `router.go` (+ tests). Routes: GET /dashboard/summary, GET /dashboard/inventory-movement?days=, GET /dashboard/category-distribution, GET /dashboard/top-selling?limit=.
 Acceptance: handlers validate params, return chart payload shapes for Recharts.
 QA happy: summary roundtrip 200 with all KPIs. QA failure: invalid `days` -> 400 — evidence test.
 Commit: `feat(dashboard): routes`.
 
-- [ ] **T9.3 - Reports module (lightweight) + CSV export (C12)**
+- [x] **T9.3 - Reports module (lightweight) + CSV export (C12)**
 References: design.md Reports + Export; Locked conventions CSV. Files: `internal/report/{model,repository,service,handler,router}.go` (+ tests). Stock summary report (per-category totals, low-stock list) + CSV export via shared util.
 Acceptance: GET /reports/stock-summary returns envelope; GET /reports/export returns CSV attachment.
 QA happy: summary numbers match dashboard low-stock + category counts. QA failure: export uses shared util (golden CSV test) — evidence.
