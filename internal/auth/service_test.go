@@ -361,3 +361,58 @@ func TestRegisterEmptyFieldsValidation(t *testing.T) {
 	_, err := svc.Register(RegisterRequest{Name: "", Email: "", Password: ""})
 	assert.ErrorIs(t, err, sharederr.ErrValidation)
 }
+
+func TestDemoLoginCreatesUserOnFirstCall(t *testing.T) {
+	uid := uuid.New()
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", DemoEmail).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", "STAFF").Return(staffRole, nil)
+	repo.On("CreateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		u := args.Get(0).(*User)
+		u.ID = uid
+	})
+	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+
+	svc := newTestService(repo)
+	res, err := svc.DemoLogin()
+
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	assert.Equal(t, DemoEmail, res.User.Email)
+	assert.Equal(t, "Demo User", res.User.Name)
+	assert.Equal(t, staffRoleID, res.User.RoleID)
+	assert.NotEmpty(t, res.AccessToken)
+	assert.NotEmpty(t, res.RefreshToken)
+	repo.AssertExpectations(t)
+}
+
+func TestDemoLoginReusesExistingUser(t *testing.T) {
+	uid := uuid.New()
+	existing := &User{ID: uid, Email: DemoEmail, Name: "Demo User", RoleID: staffRoleID, IsActive: true}
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", DemoEmail).Return(existing, nil)
+	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+
+	svc := newTestService(repo)
+	res, err := svc.DemoLogin()
+
+	require.NoError(t, err)
+	assert.Equal(t, uid, res.User.ID)
+	repo.AssertNotCalled(t, "FindRoleByName")
+	repo.AssertNumberOfCalls(t, "CreateUser", 0)
+}
+
+func TestDemoLoginRoleLookupError(t *testing.T) {
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", DemoEmail).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", "STAFF").Return(nil, sharederr.ErrNotFound)
+
+	svc := newTestService(repo)
+	_, err := svc.DemoLogin()
+
+	require.Error(t, err)
+}

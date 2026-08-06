@@ -21,13 +21,19 @@ import (
 )
 
 func setupAuthEngine(repo *mockRepo) (*gin.Engine, *Service, *TokenManager) {
+	return setupAuthEngineMode(repo, false)
+}
+
+// setupAuthEngineMode builds the engine with demo auto-login enabled or
+// disabled according to demoMode.
+func setupAuthEngineMode(repo *mockRepo, demoMode bool) (*gin.Engine, *Service, *TokenManager) {
 	gin.SetMode(gin.TestMode)
 	tm := newTestManager()
 	svc := NewService(repo, tm, bcrypt.DefaultCost)
 	h := NewHandler(svc, validator.New())
 	r := gin.New()
 	group := r.Group("/api/v1")
-	RegisterRoutes(group, h, tm)
+	RegisterRoutes(group, h, tm, demoMode)
 	return r, svc, tm
 }
 
@@ -40,7 +46,7 @@ func setupAuthEngineWith(tm *TokenManager, repo *mockRepo) *gin.Engine {
 	h := NewHandler(svc, validator.New())
 	r := gin.New()
 	group := r.Group("/api/v1")
-	RegisterRoutes(group, h, tm)
+	RegisterRoutes(group, h, tm, false)
 	return r
 }
 
@@ -383,4 +389,75 @@ func TestHandler_RegisterRoleLookupError(t *testing.T) {
 	w := doJSON(t, r, "POST", "/api/v1/auth/register",
 		`{"name":"Ada","email":"ada@rl.test","password":"password123"}`, "")
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestHandler_DemoLoginEnabled(t *testing.T) {
+	uid := uuid.New()
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", DemoEmail).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", "STAFF").Return(staffRole, nil)
+	repo.On("CreateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		args.Get(0).(*User).ID = uid
+	})
+	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+
+	r, _, _ := setupAuthEngineMode(repo, true)
+	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := decode(t, w)
+	assert.True(t, body["success"].(bool))
+	data := body["data"].(map[string]any)
+	assert.NotEmpty(t, data["access_token"])
+	assert.Equal(t, DemoEmail, data["user"].(map[string]any)["email"])
+	repo.AssertExpectations(t)
+}
+
+func TestHandler_DemoLoginReusesExisting(t *testing.T) {
+	uid := uuid.New()
+	existing := &User{ID: uid, Email: DemoEmail, Name: "Demo User", RoleID: staffRoleID, IsActive: true}
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", DemoEmail).Return(existing, nil)
+	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+
+	r, _, _ := setupAuthEngineMode(repo, true)
+	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")
+	assert.Equal(t, http.StatusOK, w.Code)
+	repo.AssertNotCalled(t, "FindRoleByName")
+	repo.AssertNumberOfCalls(t, "CreateUser", 0)
+}
+
+func TestHandler_DemoLoginDisabledReturnsNotFound(t *testing.T) {
+	repo := &mockRepo{}
+	r, _, _ := setupAuthEngine(repo)
+	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	repo.AssertNotCalled(t, "FindUserByEmail")
+}
+
+func TestHandler_DemoTokenAuthorizesProtectedRoute(t *testing.T) {
+	uid := uuid.New()
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", DemoEmail).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", "STAFF").Return(staffRole, nil)
+	repo.On("CreateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		args.Get(0).(*User).ID = uid
+	})
+	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindUserByID", uid).Return(&User{ID: uid, Email: DemoEmail, RoleID: staffRoleID, IsActive: true}, nil)
+
+	r, _, _ := setupAuthEngineMode(repo, true)
+	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")
+	require.Equal(t, http.StatusOK, w.Code)
+	data := decode(t, w)["data"].(map[string]any)
+	accessToken := data["access_token"].(string)
+
+	w = doJSON(t, r, "GET", "/api/v1/auth/me", "", accessToken)
+	assert.Equal(t, http.StatusOK, w.Code)
+	repo.AssertExpectations(t)
 }

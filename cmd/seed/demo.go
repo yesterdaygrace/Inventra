@@ -6,8 +6,11 @@ package main
 import (
 	"fmt"
 
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"inventory/internal/auth"
 	"inventory/internal/category"
 	"inventory/internal/inventory"
 	"inventory/internal/product"
@@ -61,6 +64,44 @@ func runDemo(db *gorm.DB) error {
 	if err := seedDemoInventory(db); err != nil {
 		return err
 	}
+	if err := seedDemoUser(db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// seedDemoUser creates the demo STAFF user used by demo auto-login mode
+// (POST /auth/demo) if it does not already exist.
+func seedDemoUser(db *gorm.DB) error {
+	var count int64
+	if err := db.Model(&auth.User{}).Where("email = ?", auth.DemoEmail).Count(&count).Error; err != nil {
+		return fmt.Errorf("count demo user: %w", err)
+	}
+	if count > 0 {
+		fmt.Printf("demo user %s already exists, skipping\n", auth.DemoEmail)
+		return nil
+	}
+
+	role := auth.Role{}
+	if err := db.Where(auth.Role{Name: "STAFF"}).First(&role).Error; err != nil {
+		return fmt.Errorf("find STAFF role: %w", err)
+	}
+
+	randomPass, err := bcrypt.GenerateFromPassword([]byte(fmt.Sprintf("demo-%s", uuid.NewString())), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash demo password: %w", err)
+	}
+	user := auth.User{
+		Name:         "Demo User",
+		Email:        auth.DemoEmail,
+		PasswordHash: string(randomPass),
+		RoleID:       role.ID,
+		IsActive:     true,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		return fmt.Errorf("create demo user: %w", err)
+	}
+	fmt.Printf("seeded demo user %s (role STAFF)\n", auth.DemoEmail)
 	return nil
 }
 

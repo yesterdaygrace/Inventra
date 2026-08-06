@@ -265,6 +265,24 @@ paths:
       summary: Change password
       tags:
       - auth
+  /auth/demo:
+    post:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+        "404":
+          description: demo mode disabled
+          schema:
+            $ref: '#/definitions/response.Body'
+      summary: Demo auto-login (requires demo mode)
+      tags:
+      - auth
   /auth/login:
     post:
       consumes:

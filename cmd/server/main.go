@@ -79,7 +79,7 @@ func main() {
 	authSvc := auth.NewService(authRepo, tm, cfg.BCryptCost)
 	authH := auth.NewHandler(authSvc, validator.New())
 	authH.SetAudit(auditSvc)
-	auth.RegisterRoutes(r.Group("/api/v1"), authH, tm)
+	auth.RegisterRoutes(r.Group("/api/v1"), authH, tm, cfg.DemoMode)
 
 	activitylog.RegisterRoutes(r.Group("/api/v1"), auditH, auth.NewTokenParser(tm))
 

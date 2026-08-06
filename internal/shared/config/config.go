@@ -23,6 +23,7 @@ const (
 	defaultAppEnv         = "development"
 	defaultDBSslMode      = "disable"
 	defaultEnvFile        = ".env"
+	defaultDemoMode       = false
 	envFileOverrideVar    = "ENV_FILE"
 	accessTTLDefaultStr   = "15m"
 	refreshTTLDefaultStr  = "168h"
@@ -48,6 +49,7 @@ type Config struct {
 	LowStockThreshold int
 	CORSOrigins       []string
 	LogLevel          string
+	DemoMode          bool
 }
 
 // MissingRequiredError is returned when a required configuration value
@@ -109,6 +111,7 @@ func Load() (*Config, error) {
 		LowStockThreshold: v.GetInt("LOW_STOCK_THRESHOLD"),
 		CORSOrigins:       splitOrigins(v.GetString("CORS_ORIGINS")),
 		LogLevel:          v.GetString("LOG_LEVEL"),
+		DemoMode:          v.GetBool("DEMO_MODE"),
 	}
 
 	// Duration values from viper need explicit parsing when set as strings.
@@ -141,6 +144,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("LOG_LEVEL", defaultLogLevel)
 	v.SetDefault("CORS_ORIGINS", "")
 	v.SetDefault(envFileOverrideVar, defaultEnvFile)
+	v.SetDefault("DEMO_MODE", defaultDemoMode)
 }
 
 func (c *Config) validate() error {

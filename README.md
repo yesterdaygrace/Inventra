@@ -72,6 +72,11 @@ Required: `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`. See
 [docs/deployment.md](docs/deployment.md#2-environment-variables) for the full
 table and `.env.example` for a template.
 
+Optional: set `DEMO_MODE=true` to enable a password-free demo auto-login
+endpoint — `POST /api/v1/auth/demo` returns tokens for a STAFF demo user
+(`demo@inventory.local`, created on first use). Intended for development and
+demoing only; never enable it in production.
+
 ## API
 
 - **Swagger UI:** `GET /swagger/index.html` (after `make swagger` + run)

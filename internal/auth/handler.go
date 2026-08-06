@@ -135,6 +135,27 @@ func (h *Handler) Login(c *gin.Context) {
 	response.OK(c, loginResultResponse(res))
 }
 
+// DemoLogin handles POST /auth/demo. It returns tokens for the demo STAFF
+// user, creating it on first use. Guarded externally by DEMO_MODE.
+// @Tags auth
+// @Summary Demo auto-login (requires demo mode)
+// @Accept json
+// @Produce json
+// @Success 200 {object} response.Body
+// @Failure 404 {object} response.Body "demo mode disabled"
+// @Router /auth/demo [post]
+func (h *Handler) DemoLogin(c *gin.Context) {
+	res, err := h.svc.DemoLogin()
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	if res.User != nil {
+		h.record(c, "LOGIN", res.User.ID.String(), &res.User.ID, gin.H{"email": res.User.Email})
+	}
+	response.OK(c, loginResultResponse(res))
+}
+
 // Refresh handles POST /auth/refresh.
 // @Tags auth
 // @Summary Refresh access token

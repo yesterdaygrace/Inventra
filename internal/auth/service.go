@@ -150,7 +150,61 @@ func (s *Service) Login(email, password string) (*AuthResult, error) {
 	return res, nil
 }
 
-// Refresh rotates a presented refresh token: revokes it and issues a new pair.
+// DemoEmail is the fixed identity used by demo auto-login mode. It is
+// deterministic so the demo user is created/loaded idempotently.
+const DemoEmail = "demo@inventory.local"
+
+// DemoLogin returns a token pair for the demo STAFF user, creating the
+// account on first call if it does not exist yet. It never requires a
+// password: access is granted purely by the endpoint being reachable
+// (guarded externally by DEMO_MODE). The demo password hash is a fresh
+// random bcrypt value so the account has no known credential.
+func (s *Service) DemoLogin() (*AuthResult, error) {
+	user, err := s.repo.FindUserByEmail(DemoEmail)
+	switch {
+	case err == nil && user != nil:
+		// existing demo user: issue tokens directly
+	case errors.Is(err, sharederr.ErrNotFound):
+		role, rerr := s.repo.FindRoleByName("STAFF")
+		if rerr != nil {
+			return nil, fmt.Errorf("find STAFF role: %w", rerr)
+		}
+		randomPass, perr := randomPasswordHash(s.cost)
+		if perr != nil {
+			return nil, perr
+		}
+		user = &User{
+			Name:         "Demo User",
+			Email:        DemoEmail,
+			PasswordHash: randomPass,
+			RoleID:       role.ID,
+			IsActive:     true,
+		}
+		if cerr := s.repo.CreateUser(user); cerr != nil {
+			return nil, fmt.Errorf("create demo user: %w", cerr)
+		}
+	default:
+		return nil, fmt.Errorf("find demo user: %w", err)
+	}
+
+	res, err := s.issueTokens(user)
+	if err != nil {
+		return nil, err
+	}
+	s.logActivity(user.ID, "LOGIN", "user")
+	return res, nil
+}
+
+// randomPasswordHash generates an unusable bcrypt hash of a random password
+// so the demo account has no known credential (demo login bypasses passwords).
+func randomPasswordHash(cost int) (string, error) {
+	raw := uuid.NewString()
+	hash, err := bcrypt.GenerateFromPassword([]byte(raw), cost)
+	if err != nil {
+		return "", fmt.Errorf("hash demo password: %w", err)
+	}
+	return string(hash), nil
+}
 func (s *Service) Refresh(rawToken string) (*AuthResult, error) {
 	hash := s.tokens.HashRefreshToken(rawToken)
 	rt, err := s.repo.FindRefreshTokenByHash(hash)

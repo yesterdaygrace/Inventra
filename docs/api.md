@@ -52,6 +52,7 @@ Response envelope carries `pagination` object: `page`, `per_page`, `total`, `tot
 | `POST /auth/register` | ✔ | – | – | – |
 | `POST /auth/login` | ✔ | – | – | – |
 | `POST /auth/refresh` | ✔ (refresh token) | – | – | – |
+| `POST /auth/demo` | ✔ (demo mode only) | – | – | – |
 | `POST /auth/logout` | – | ✔ | ✔ | ✔ |
 | `POST /auth/change-password` | – | ✔ | ✔ | ✔ |
 | `PUT /auth/profile` | – | ✔ | ✔ | ✔ |
@@ -97,7 +98,6 @@ Access token TTL `15m`; refresh TTL `168h` (7d); refresh token rotated on every 
 
 ### POST `/api/v1/auth/login` — public
 - **Request:** `{ "email": "…", "password": "…" }`
-- **Response 200 (data):**
   ```json
   {
     "access_token": "<jwt 15m>",
@@ -108,6 +108,13 @@ Access token TTL `15m`; refresh TTL `168h` (7d); refresh token rotated on every 
   }
   ```
 - **Errors:** 401 wrong credentials / inactive user; 400 validation.
+- Side effects: refresh token row inserted; activity log entry (`action=LOGIN`).
+
+### POST `/api/v1/auth/demo` — public (only when `DEMO_MODE=true`)
+- **Request:** none (no JSON body).
+- **Response 200 (data):** `{ "access_token", "refresh_token", "token_type": "Bearer", "expires_in": 900, "user": { "id": "…", "name": "Demo User", "email": "demo@inventory.local", "role": "STAFF", "is_active": true } }`.
+- **Behaviour:** returns tokens for a `STAFF` demo user (`demo@inventory.local`), creating the account on first use. No password required.
+- **Route absence:** when demo mode is off the route is not registered → `404`.
 - Side effects: refresh token row inserted; activity log entry (`action=LOGIN`).
 
 ### POST `/api/v1/auth/refresh` — public (presents refresh token)

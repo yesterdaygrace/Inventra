@@ -64,6 +64,7 @@ Full variable set consumed by `internal/shared/config`:
 | `LOW_STOCK_THRESHOLD` | no | `10` | default for new products |
 | `CORS_ORIGINS` | no | `` | comma-separated allowed origins |
 | `LOG_LEVEL` | no | `info` | debug/info/warn/error |
+| `DEMO_MODE` | no | `false` | enable public demo auto-login `POST /api/v1/auth/demo`; dev/demo only |
 
 Missing required vars (`DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`)
 cause the API to refuse to start (`missing required configuration`). See

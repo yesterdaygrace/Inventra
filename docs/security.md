@@ -40,6 +40,20 @@
 3. On success, sets `user_id` and `role` in Gin context.
 4. Route-level `RoleRequired(role)` middleware gates admin-only endpoints.
 
+### 1.4 Demo auto-login (DEMO_MODE) — security notes
+
+- `DEMO_MODE=true` exposes `POST /api/v1/auth/demo`, which returns a real token pair
+  for a `STAFF` demo user (`demo@inventory.local`) **without any password**.
+- **It is a passwordless identities-the-user door.** Anyone who can reach the endpoint can
+  authenticate as the demo STAFF account. It is **development/demo only** — it must never be
+  enabled in a shared or production environment.
+- The demo account holds `STAFF`, not `ADMIN`, so the blast radius is limited to read
+  endpoints and stock movements — no user management, no audit-log read.
+- The demo password hash is a fresh random bcrypt value; the account has **no known credential**,
+  so normal `POST /auth/login` cannot be used against it.
+- Every demo login still writes an activity log entry (`action=LOGIN`) for auditability.
+- Guardrail: the route is only registered (reachable) while `DEMO_MODE=true`; the flag defaults `false`.
+
 ---
 
 ## 2. Authorization (RBAC)
