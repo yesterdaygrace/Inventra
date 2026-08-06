@@ -85,9 +85,7 @@ func (m *mockRepo) CreateActivityLog(entry ActivityLogEntry) error {
 
 var (
 	staffRoleID = uuid.New()
-	adminRoleID = uuid.New()
 	staffRole   = &Role{ID: staffRoleID, Name: "STAFF"}
-	adminRole   = &Role{ID: adminRoleID, Name: "ADMIN"}
 )
 
 func newTestService(repo Repository) *Service {

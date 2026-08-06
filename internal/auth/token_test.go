@@ -105,3 +105,8 @@ func TestGenerateRefreshTokenRandomness(t *testing.T) {
 		seen[raw] = true
 	}
 }
+
+func TestRefreshTTL(t *testing.T) {
+	tm := &TokenManager{secret: []byte("s"), accessTTL: time.Minute, refreshTTL: 48 * time.Hour}
+	assert.Equal(t, 48*time.Hour, tm.RefreshTTL())
+}

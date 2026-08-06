@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 
+	"inventory/internal/shared/audit"
 	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/validator"
 )
@@ -27,6 +29,19 @@ func setupAuthEngine(repo *mockRepo) (*gin.Engine, *Service, *TokenManager) {
 	group := r.Group("/api/v1")
 	RegisterRoutes(group, h, tm)
 	return r, svc, tm
+}
+
+// setupAuthEngineWith builds the engine over an explicit TokenManager so
+// callers can pre-compute refresh-token hashes with the same manager the
+// service will use to verify them.
+func setupAuthEngineWith(tm *TokenManager, repo *mockRepo) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	svc := NewService(repo, tm, bcrypt.DefaultCost)
+	h := NewHandler(svc, validator.New())
+	r := gin.New()
+	group := r.Group("/api/v1")
+	RegisterRoutes(group, h, tm)
+	return r
 }
 
 func doJSON(t *testing.T, r *gin.Engine, method, path, body string, token string) *httptest.ResponseRecorder {
@@ -123,4 +138,249 @@ func TestRegisterValidationError(t *testing.T) {
 	w := doJSON(t, r, "POST", "/api/v1/auth/register",
 		`{"name":"","email":"bad","password":"short"}`, "")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRegisterLoginValidationErrors(t *testing.T) {
+	repo := &mockRepo{}
+	r, _, _ := setupAuthEngine(repo)
+
+	w := doJSON(t, r, "POST", "/api/v1/auth/login",
+		`{"email":"not-an-email","password":""}`, "")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRefreshValidationError(t *testing.T) {
+	repo := &mockRepo{}
+	r, _, _ := setupAuthEngine(repo)
+	w := doJSON(t, r, "POST", "/api/v1/auth/refresh", `{"refresh_token":""}`, "")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// accessTokenFor signs a valid access token for the given user so protected
+// routes can be exercised with the shared test manager.
+func accessTokenFor(t *testing.T, tm *TokenManager, uid uuid.UUID, role string) string {
+	t.Helper()
+	raw, err := tm.SignAccessToken(uid, role)
+	require.NoError(t, err)
+	return raw
+}
+
+func TestHandler_RefreshRoundtrip(t *testing.T) {
+	uid := uuid.New()
+	user := &User{ID: uid, Name: "Ada", Email: "ada@refresh.test", RoleID: staffRoleID, IsActive: true}
+	expires := time.Now().Add(7 * 24 * time.Hour)
+	raw := "refreshtokraw"
+	tm := newTestManager()
+	hash := tm.HashRefreshToken(raw)
+	rt := &RefreshToken{ID: uuid.New(), UserID: uid, TokenHash: hash, ExpiresAt: expires}
+
+	repo := &mockRepo{}
+	repo.On("FindRefreshTokenByHash", hash).Return(rt, nil)
+	repo.On("FindUserByID", uid).Return(user, nil)
+	repo.On("UpdateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+
+	r := setupAuthEngineWith(tm, repo)
+	w := doJSON(t, r, "POST", "/api/v1/auth/refresh", `{"refresh_token":"refreshtokraw"}`, "")
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := decode(t, w)
+	assert.True(t, body["success"].(bool))
+	data := body["data"].(map[string]any)
+	assert.NotEmpty(t, data["access_token"])
+	assert.NotEmpty(t, data["refresh_token"])
+
+	repo.AssertExpectations(t)
+}
+
+func TestHandler_RefreshRejectsUnknownToken(t *testing.T) {
+	tm := newTestManager()
+	hash := tm.HashRefreshToken("unknownraw")
+	repo := &mockRepo{}
+	repo.On("FindRefreshTokenByHash", hash).Return(nil, sharederr.ErrNotFound)
+	r, _, _ := setupAuthEngine(repo)
+	w := doJSON(t, r, "POST", "/api/v1/auth/refresh", `{"refresh_token":"unknownraw"}`, "")
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHandler_LogoutRevokesToken(t *testing.T) {
+	uid := uuid.New()
+	raw := "logoutraw"
+	tm := newTestManager()
+	hash := tm.HashRefreshToken(raw)
+	rt := &RefreshToken{ID: uuid.New(), UserID: uid, TokenHash: hash, ExpiresAt: time.Now().Add(time.Hour)}
+
+	repo := &mockRepo{}
+	repo.On("FindRefreshTokenByHash", hash).Return(rt, nil)
+	repo.On("UpdateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+
+	r := setupAuthEngineWith(tm, repo)
+	token := accessTokenFor(t, tm, uid, "STAFF")
+	w := doJSON(t, r, "POST", "/api/v1/auth/logout", `{"refresh_token":"logoutraw"}`, token)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	repo.AssertExpectations(t)
+}
+
+func TestHandler_LogoutIdempotentWhenTokenUnknown(t *testing.T) {
+	tm := newTestManager()
+	hash := tm.HashRefreshToken("missingraw")
+	repo := &mockRepo{}
+	repo.On("FindRefreshTokenByHash", hash).Return(nil, sharederr.ErrNotFound)
+
+	r, _, tm := setupAuthEngine(repo)
+	token := accessTokenFor(t, tm, uuid.New(), "STAFF")
+	w := doJSON(t, r, "POST", "/api/v1/auth/logout", `{"refresh_token":"missingraw"}`, token)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	repo.AssertExpectations(t)
+}
+
+func TestHandler_ChangePassword(t *testing.T) {
+	uid := uuid.New()
+	user := &User{
+		ID: uid, Name: "Ada", Email: "ada@pw.test",
+		PasswordHash: hashedPassword("oldpass123"), RoleID: staffRoleID, IsActive: true,
+	}
+
+	repo := &mockRepo{}
+	repo.On("FindUserByID", uid).Return(user, nil)
+	repo.On("UpdateUser", mock.AnythingOfType("*auth.User")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+
+	r, _, tm := setupAuthEngine(repo)
+	token := accessTokenFor(t, tm, uid, "STAFF")
+	w := doJSON(t, r, "POST", "/api/v1/auth/change-password",
+		`{"old_password":"oldpass123","new_password":"newpass456"}`, token)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	repo.AssertExpectations(t)
+}
+
+func TestHandler_ChangePasswordWrongOld(t *testing.T) {
+	uid := uuid.New()
+	user := &User{
+		ID: uid, Name: "Ada", Email: "ada@pw.test",
+		PasswordHash: hashedPassword("oldpass123"), RoleID: staffRoleID, IsActive: true,
+	}
+	repo := &mockRepo{}
+	repo.On("FindUserByID", uid).Return(user, nil)
+
+	r, _, tm := setupAuthEngine(repo)
+	token := accessTokenFor(t, tm, uid, "STAFF")
+	w := doJSON(t, r, "POST", "/api/v1/auth/change-password",
+		`{"old_password":"wrongpass","new_password":"newpass456"}`, token)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHandler_UpdateProfile(t *testing.T) {
+	uid := uuid.New()
+	user := &User{ID: uid, Name: "Ada", Email: "ada@profile.test", RoleID: staffRoleID, IsActive: true}
+	updated := &User{ID: uid, Name: "Ada Lovelace", Email: "ada@profile.test", RoleID: staffRoleID, IsActive: true}
+
+	repo := &mockRepo{}
+	repo.On("FindUserByID", uid).Return(user, nil)
+	repo.On("FindUserByEmail", "new@profile.test").Return(nil, sharederr.ErrNotFound)
+	repo.On("UpdateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		*args.Get(0).(*User) = *updated
+	})
+	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
+	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+
+	r, _, tm := setupAuthEngine(repo)
+	token := accessTokenFor(t, tm, uid, "STAFF")
+	w := doJSON(t, r, "PUT", "/api/v1/auth/profile",
+		`{"name":"Ada Lovelace","email":"new@profile.test"}`, token)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := decode(t, w)
+	assert.True(t, body["success"].(bool))
+
+	repo.AssertExpectations(t)
+}
+
+func TestHandler_ChangePasswordValidationError(t *testing.T) {
+	repo := &mockRepo{}
+	r, _, tm := setupAuthEngine(repo)
+	token := accessTokenFor(t, tm, uuid.New(), "STAFF")
+	w := doJSON(t, r, "POST", "/api/v1/auth/change-password",
+		`{"old_password":"","new_password":"short"}`, token)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandler_UpdateProfileValidationError(t *testing.T) {
+	repo := &mockRepo{}
+	r, _, tm := setupAuthEngine(repo)
+	token := accessTokenFor(t, tm, uuid.New(), "STAFF")
+	w := doJSON(t, r, "PUT", "/api/v1/auth/profile", `{"name":"x"}`, token)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandler_MeWhenUserMissing(t *testing.T) {
+	uid := uuid.New()
+	repo := &mockRepo{}
+	repo.On("FindUserByID", uid).Return(nil, sharederr.ErrNotFound)
+	r, _, tm := setupAuthEngine(repo)
+	token := accessTokenFor(t, tm, uid, "STAFF")
+	w := doJSON(t, r, "GET", "/api/v1/auth/me", "", token)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestHandler_LoginInactiveUser(t *testing.T) {
+	inactive := &User{
+		ID: uuid.New(), Name: "Nope", Email: "inactive@login.test",
+		PasswordHash: hashedPassword("password123"), RoleID: staffRoleID, IsActive: false,
+	}
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", "inactive@login.test").Return(inactive, nil)
+	r, _, _ := setupAuthEngine(repo)
+	w := doJSON(t, r, "POST", "/api/v1/auth/login",
+		`{"email":"inactive@login.test","password":"password123"}`, "")
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHandler_LoginWrongPassword(t *testing.T) {
+	user := &User{
+		ID: uuid.New(), Name: "Ada", Email: "ada@wp.test",
+		PasswordHash: hashedPassword("rightpass"), RoleID: staffRoleID, IsActive: true,
+	}
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", "ada@wp.test").Return(user, nil)
+	r, _, _ := setupAuthEngine(repo)
+	w := doJSON(t, r, "POST", "/api/v1/auth/login",
+		`{"email":"ada@wp.test","password":"wrongpass"}`, "")
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHandler_ProtectedRouteRejectsMalformedJSON(t *testing.T) {
+	repo := &mockRepo{}
+	r, _, tm := setupAuthEngine(repo)
+	token := accessTokenFor(t, tm, uuid.New(), "STAFF")
+	w := doJSON(t, r, "POST", "/api/v1/auth/change-password", `{bad json`, token)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandler_SetAuditNilSafe(t *testing.T) {
+	svc := NewService(&mockRepo{}, newTestManager(), bcrypt.DefaultCost)
+	h := NewHandler(svc, validator.New())
+	h.SetAudit(nil)
+	h.SetAudit(&spyRecorder{})
+}
+
+// spyRecorder records audit events for the SetAudit wiring test.
+type spyRecorder struct {
+	called bool
+}
+
+func (s *spyRecorder) Record(audit.Entry) { s.called = true }
+
+func TestHandler_RegisterRoleLookupError(t *testing.T) {
+	repo := &mockRepo{}
+	repo.On("FindUserByEmail", mock.Anything).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", "STAFF").Return(nil, sharederr.ErrNotFound)
+	r, _, _ := setupAuthEngine(repo)
+	w := doJSON(t, r, "POST", "/api/v1/auth/register",
+		`{"name":"Ada","email":"ada@rl.test","password":"password123"}`, "")
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }

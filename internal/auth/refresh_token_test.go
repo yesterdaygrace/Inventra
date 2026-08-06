@@ -18,6 +18,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 
 	// Clean up after test
 	t.Cleanup(func() {
+		db.Exec("DROP TABLE IF EXISTS activity_logs CASCADE")
 		db.Exec("DROP TABLE IF EXISTS refresh_tokens CASCADE")
 		db.Exec("DROP TABLE IF EXISTS users CASCADE")
 		db.Exec("DROP TABLE IF EXISTS roles CASCADE")

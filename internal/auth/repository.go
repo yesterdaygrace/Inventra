@@ -118,10 +118,6 @@ func isUniqueViolation(err error) bool {
 }
 
 func (r *GORMRepository) CreateActivityLog(entry ActivityLogEntry) error {
-	row := activityLogRow{
-		UserID:     entry.UserID,
-		Action:     entry.Action,
-		EntityType: entry.EntityType,
-	}
+	row := activityLogRow(entry)
 	return r.db.Create(&row).Error
 }
