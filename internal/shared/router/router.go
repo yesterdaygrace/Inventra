@@ -20,5 +20,14 @@ func New(cfg *config.Config) *gin.Engine {
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"service": "inventra",
+			"version": "1.0.0",
+			"docs":    "/swagger/index.html",
+			"health":  "/healthz",
+			"api":     "/api/v1",
+		})
+	})
 	return r
 }
