@@ -20,7 +20,7 @@ test-cover:
 # Run the server (once implemented)
 run:
 	@test -f cmd/server/main.go || { echo "cmd/server not yet implemented"; exit 0; }
-	$(GO) run ./cmd/server
+	$(SEED_DB) DEMO_MODE=$(DEMO_MODE) $(GO) run ./cmd/server
 
 # Development mode with auto-reload (placeholder)
 dev:
