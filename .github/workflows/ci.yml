@@ -43,18 +43,13 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v1.64
+          version: v2.2
 
-      - name: go test coverage gate
-        env:
-          DB_DSN: "host=localhost user=postgres password=postgres dbname=inventory port=5433 sslmode=disable"
-        run: |
-          # Coverage gate is scoped to application code under internal/;
-          # cmd/ (entrypoints) and docs/swagger (generated) are uncoveable boilerplate.
-          go test ./internal/... -p 1 -timeout 120s -covermode=atomic -coverprofile=coverage.out
-          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
-          echo "total coverage: ${total}%"
-          awk -v c="$total" 'BEGIN { if (c < 80.0) { print "coverage gate FAILED: " c "%"; exit 1 } else { print "coverage gate PASSED: " c "%" } }'
+      - name: go test with coverage
+        run: make coverage
+
+      - name: enforce 80% coverage gate
+        run: make coverage-gate
 
   frontend:
     runs-on: ubuntu-latest
