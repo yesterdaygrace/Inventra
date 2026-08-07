@@ -2,7 +2,6 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -60,7 +59,7 @@ func RoleRequired(allowed ...string) gin.HandlerFunc {
 				return
 			}
 		}
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "forbidden"})
+		response.Error(c, sharederr.ErrForbidden)
 		c.Abort()
 	}
 }

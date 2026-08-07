@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -105,6 +106,13 @@ func TestRoleRequiredBlocksStaffFromAdminRoute(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
+	var body struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	assert.False(t, body.Success)
+	assert.Equal(t, "forbidden", body.Message)
 }
 
 func TestRoleRequiredAllowsEitherRole(t *testing.T) {
