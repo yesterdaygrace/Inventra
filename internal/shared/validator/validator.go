@@ -22,7 +22,7 @@ func New() *Validator {
 // human-readable validation error, or nil when valid.
 func (v *Validator) Validate(s any) error {
 	if err := v.validate.Struct(s); err != nil {
-		return fmt.Errorf("%w: %v", err, err)
+		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil
 }
