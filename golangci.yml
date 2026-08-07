@@ -1,12 +1,137 @@
+# golangci-lint v2 configuration (curated ruleset).
+# Docs: https://golangci-lint.run/ (v2.x)
+version: "2"
+
 linters:
+  # Baseline correctness
   enable:
     - govet
     - errcheck
     - staticcheck
     - unused
     - ineffassign
-    - gofmt
     - misspell
+    - gosec
+    - errorlint
+    - nilerr
+    - unconvert
+    - unparam
+    - revive
+    - gofmt
+    - goimports
+    - bodyclose
+    - prealloc
+    - whitespace
+    - tenv
+    # gocritic is disabled by default in v2 — enable the safe subset.
+    - gocritic
+
+  settings:
+    errorlint:
+      # check whether fmt.Errorf uses the %w verb for wrapping errors
+      errorf: true
+      # check for plain type assertions instead of errors.As
+      asserts: true
+      # check for plain error comparisons instead of errors.Is
+      comparison: true
+    gocritic:
+      enabled-checks:
+        - appendAssign
+        - badCall
+        - badCond
+        - dupArg
+        - dupBranchBody
+        - dupCase
+        - dupSubExpr
+        - elseif
+        - hugeParam
+        - ifElseChain
+        - nilValReturn
+        - offBy1
+        - rangeExprCopy
+        - rangeValCopy
+        - sloppyLen
+        - stringXbytes
+        - switchTrue
+        - truncateCmp
+        - typeAssertChain
+        - unnamedResult
+        - unslice
+    revive:
+      rules:
+        - name: exported
+          disabled: false
+        - name: blank-imports
+          disabled: false
+        - name: context-as-argument
+          disabled: false
+        - name: context-keys-type
+          disabled: false
+        - name: dot-imports
+          disabled: false
+        - name: error-return
+          disabled: false
+        - name: error-strings
+          disabled: false
+        - name: error-naming
+          disabled: false
+        - name: exported
+          disabled: false
+        - name: if-return
+          disabled: false
+        - name: increment-decrement
+          disabled: false
+        - name: var-naming
+          disabled: false
+        - name: var-declaration
+          disabled: false
+        - name: package-comments
+          disabled: false
+        - name: range
+          disabled: false
+        - name: receiver-naming
+          disabled: false
+        - name: time-naming
+          disabled: false
+        - name: unexported-return
+          disabled: false
+        - name: indent-error-flow
+          disabled: false
+        - name: redundant-import-alias
+          disabled: false
+        - name: unreachable-code
+          disabled: false
+        - name: unused-parameter
+          disabled: true
+        - name: unhandled-error
+          disabled: false
+          arguments:
+            - "fmt.Printf"
+            - "fmt.Println"
+            - "fmt.Fprintf"
+            - "fmt.Fprintln"
+            - "fmt.Print"
+            - "strings.Builder.WriteString"
+    gosec:
+      # Exclude weak-crypto checks that are not relevant (G505: sha1 usage for
+      # non-security hashing like refresh-token digests is intentional).
+      exclude-generated: true
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - linters:
+          - gosec
+        text: "G101|G505"
 
 run:
   timeout: 5m
+  tests: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

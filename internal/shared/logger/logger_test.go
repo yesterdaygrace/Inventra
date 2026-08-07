@@ -25,7 +25,11 @@ func TestNewEmitsJSONFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create temp log file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close log file: %v", err)
+		}
+	}()
 
 	enc := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 	core := zapcore.NewCore(enc, zapcore.AddSync(file), zapcore.DebugLevel)

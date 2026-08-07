@@ -30,10 +30,10 @@ func (r *GORMRepository) StockIn(m Movement) (*Inventory, error) {
 		var inv Inventory
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("product_id = ?", m.ProductID).First(&inv).Error
-		switch {
-		case err == nil:
+		switch err {
+		case nil:
 			inv.Quantity += m.Quantity
-		case err == gorm.ErrRecordNotFound:
+		case gorm.ErrRecordNotFound:
 			inv = Inventory{ProductID: m.ProductID, Quantity: m.Quantity}
 		default:
 			return err

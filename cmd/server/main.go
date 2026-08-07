@@ -53,7 +53,11 @@ func main() {
 	if err != nil {
 		zlog.Fatal("sql db handle failed", zap.Error(err))
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if cerr := sqlDB.Close(); cerr != nil {
+			zlog.Warn("failed to close sql connection", zap.Error(cerr))
+		}
+	}()
 
 	if err := database.AutoMigrate(db, database.Models()...); err != nil {
 		zlog.Fatal("auto migrate failed", zap.Error(err))

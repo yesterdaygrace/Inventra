@@ -49,7 +49,11 @@ func runWithDB(fn func(*gorm.DB) error, note string) {
 	if err != nil {
 		log.Fatalf("%s: sql handle: %v", note, err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if cerr := sqlDB.Close(); cerr != nil {
+			log.Printf("%s: close sql connection: %v", note, cerr)
+		}
+	}()
 
 	if err := database.AutoMigrate(db, database.Models()...); err != nil {
 		log.Fatalf("%s: migrate: %v", note, err)
@@ -76,7 +80,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("sql handle: %w", err)
 	}
-	defer sqlDB.Close()
+	defer func() {
+		if cerr := sqlDB.Close(); cerr != nil {
+			log.Printf("demo: close sql connection: %v", cerr)
+		}
+	}()
 
 	if err := database.AutoMigrate(db, database.Models()...); err != nil {
 		return fmt.Errorf("migrate: %w", err)
