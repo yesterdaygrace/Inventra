@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"inventory/internal/shared/dbutil"
 )
 
 // Query filters and paginates the activity log listing.
@@ -66,7 +68,7 @@ func (r *GORMRepository) List(q Query) ([]*ActivityLog, int64, error) {
 		return nil, 0, err
 	}
 
-	p, per := normalizePage(q.Page, q.PerPage)
+	p, per := dbutil.NormalizePage(q.Page, q.PerPage)
 	var logs []*ActivityLog
 	if err := db.Order("created_at DESC, id DESC").
 		Offset((p - 1) * per).
@@ -75,15 +77,4 @@ func (r *GORMRepository) List(q Query) ([]*ActivityLog, int64, error) {
 		return nil, 0, err
 	}
 	return logs, total, nil
-}
-
-// normalizePage clamps page/per-page to the shared defaults and cap.
-func normalizePage(page, perPage int) (int, int) {
-	if page < 1 {
-		page = 1
-	}
-	if perPage < 1 || perPage > 100 {
-		perPage = 20
-	}
-	return page, perPage
 }

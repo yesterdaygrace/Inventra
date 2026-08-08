@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"inventory/internal/shared/dbutil"
+
 	sharederr "inventory/internal/shared/errors"
 )
 
@@ -191,7 +193,7 @@ func TestGORMRepository_CreateActivityLog(t *testing.T) {
 }
 
 func TestIsUniqueViolation(t *testing.T) {
-	assert.False(t, isUniqueViolation(nil))
-	assert.False(t, isUniqueViolation(errors.New("boom")))
-	assert.True(t, isUniqueViolation(errors.New(`ERROR: duplicate key value violates unique constraint "users_email_key"`)))
+	assert.False(t, dbutil.IsUniqueViolation(nil))
+	assert.False(t, dbutil.IsUniqueViolation(errors.New("boom")))
+	assert.True(t, dbutil.IsUniqueViolation(errors.New(`ERROR: duplicate key value violates unique constraint "users_email_key"`)))
 }

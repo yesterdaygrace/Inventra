@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"inventory/internal/shared/dbutil"
 	sharederr "inventory/internal/shared/errors"
 )
 
@@ -56,7 +57,7 @@ func (r *GORMRepository) StockIn(m Movement) (*Inventory, error) {
 		return nil
 	})
 	if err != nil {
-		if isForeignKeyViolation(err) {
+		if dbutil.IsForeignKeyViolation(err) {
 			return nil, sharederr.ErrNotFound
 		}
 		return nil, err
@@ -131,7 +132,7 @@ func (r *GORMRepository) List(q ListQuery) ([]*InventoryView, int64, error) {
 		return nil, 0, err
 	}
 
-	p, per := normalizePage(q.Page, q.PerPage)
+	p, per := dbutil.NormalizePage(q.Page, q.PerPage)
 	var views []*InventoryView
 	if err := db.Order("products.name ASC").
 		Offset((p - 1) * per).
@@ -165,7 +166,7 @@ func (r *GORMRepository) Transactions(q TransactionQuery) ([]*TransactionView, i
 		return nil, 0, err
 	}
 
-	p, per := normalizePage(q.Page, q.PerPage)
+	p, per := dbutil.NormalizePage(q.Page, q.PerPage)
 	var views []*TransactionView
 	if err := db.Order("t.created_at DESC, t.id DESC").
 		Offset((p - 1) * per).
@@ -174,24 +175,4 @@ func (r *GORMRepository) Transactions(q TransactionQuery) ([]*TransactionView, i
 		return nil, 0, err
 	}
 	return views, total, nil
-}
-
-// normalizePage clamps page/per-page to the shared defaults and cap.
-func normalizePage(page, perPage int) (int, int) {
-	if page < 1 {
-		page = 1
-	}
-	if perPage < 1 || perPage > 100 {
-		perPage = 20
-	}
-	return page, perPage
-}
-
-// isForeignKeyViolation reports whether err is a PostgreSQL FK constraint
-// violation (SQLSTATE 23503), e.g. stock movement referencing a deleted product.
-func isForeignKeyViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "violates foreign key constraint")
 }

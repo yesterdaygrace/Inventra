@@ -2,11 +2,10 @@
 package auth
 
 import (
-	"strings"
-
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"inventory/internal/shared/dbutil"
 	sharederr "inventory/internal/shared/errors"
 )
 
@@ -22,7 +21,7 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 
 func (r *GORMRepository) CreateUser(u *User) error {
 	if err := r.db.Create(u).Error; err != nil {
-		if isUniqueViolation(err) {
+		if dbutil.IsUniqueViolation(err) {
 			return ErrEmailTaken
 		}
 		return err
@@ -107,15 +106,6 @@ type activityLogRow struct {
 }
 
 func (activityLogRow) TableName() string { return "activity_logs" }
-
-// isUniqueViolation detects a PostgreSQL unique-constraint violation so
-// create/update callers can translate it into ErrConflict.
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
-}
 
 func (r *GORMRepository) CreateActivityLog(entry ActivityLogEntry) error {
 	row := activityLogRow(entry)
