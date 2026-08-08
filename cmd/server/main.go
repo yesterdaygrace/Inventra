@@ -106,6 +106,7 @@ func main() {
 	inventorySvc := inventory.NewService(inventory.NewGORMRepository(db))
 	inventoryH := inventory.NewHandler(inventorySvc, validator.New())
 	inventoryH.SetAudit(auditSvc)
+	inventoryH.SetLogger(zlog)
 	inventory.RegisterRoutes(r.Group("/api/v1"), inventoryH, auth.NewTokenParser(tm))
 
 	dashboardSvc := dashboard.NewService(dashboard.NewGORMRepository(db))

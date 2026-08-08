@@ -4,6 +4,7 @@ package report
 
 import (
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"inventory/internal/shared/export"
 	"inventory/internal/shared/response"
@@ -11,12 +12,20 @@ import (
 
 // Handler exposes report routes.
 type Handler struct {
-	svc *Service
+	svc  *Service
+	zlog *zap.Logger
 }
 
 // NewHandler wires the service into the handler.
 func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+	return &Handler{svc: svc, zlog: zap.NewNop()}
+}
+
+// SetLogger wires a structured logger (nil-safe; Nop by default).
+func (h *Handler) SetLogger(l *zap.Logger) {
+	if l != nil {
+		h.zlog = l
+	}
 }
 
 // Summary handles GET /reports/stock-summary.
@@ -54,6 +63,7 @@ func (h *Handler) Export(c *gin.Context) {
 	}
 	export.SetAttachment(c, "reports")
 	if err := export.WriteCSV(c.Writer, headers, rows); err != nil {
+		h.zlog.Warn("csv export failed", zap.Error(err))
 		return
 	}
 }
@@ -75,6 +85,7 @@ func (h *Handler) LowStock(c *gin.Context) {
 	}
 	export.SetAttachment(c, "reports-low-stock")
 	if err := export.WriteCSV(c.Writer, headers, rows); err != nil {
+		h.zlog.Warn("csv export failed", zap.Error(err))
 		return
 	}
 }

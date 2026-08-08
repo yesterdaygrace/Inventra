@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"inventory/internal/shared/audit"
 	sharederr "inventory/internal/shared/errors"
@@ -22,16 +23,24 @@ type Handler struct {
 	svc   *Service
 	val   *validator.Validator
 	audit audit.Recorder
+	zlog  *zap.Logger
 }
 
 func NewHandler(svc *Service, val *validator.Validator) *Handler {
-	return &Handler{svc: svc, val: val, audit: audit.Nop{}}
+	return &Handler{svc: svc, val: val, audit: audit.Nop{}, zlog: zap.NewNop()}
 }
 
 // SetAudit wires an audit recorder (nil-safe; Nop by default).
 func (h *Handler) SetAudit(r audit.Recorder) {
 	if r != nil {
 		h.audit = r
+	}
+}
+
+// SetLogger wires a structured logger (nil-safe; Nop by default).
+func (h *Handler) SetLogger(l *zap.Logger) {
+	if l != nil {
+		h.zlog = l
 	}
 }
 
@@ -356,7 +365,9 @@ func (h *Handler) Export(c *gin.Context) {
 	}
 
 	export.SetAttachment(c, "inventory")
-	_ = export.WriteCSV(c.Writer, []string{"product_id", "sku", "name", "quantity", "updated_at"}, rows)
+	if err := export.WriteCSV(c.Writer, []string{"product_id", "sku", "name", "quantity", "updated_at"}, rows); err != nil {
+		h.zlog.Warn("csv export failed", zap.Error(err))
+	}
 }
 
 func clampPage(p int) int {
