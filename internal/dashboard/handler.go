@@ -31,7 +31,7 @@ func NewHandler(svc *Service) *Handler {
 // @Failure 401 {object} response.Body
 // @Router /dashboard/summary [get]
 func (h *Handler) Summary(c *gin.Context) {
-	sum, err := h.svc.Summary()
+	sum, err := h.svc.Summary(c.Request.Context())
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -62,7 +62,7 @@ func (h *Handler) Activity(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	items, total, err := h.svc.Activities(q.Page, q.PerPage)
+	items, total, err := h.svc.Activities(c.Request.Context(), q.Page, q.PerPage)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -104,7 +104,7 @@ func (h *Handler) InventoryMovement(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	payload, err := h.svc.InventoryMovement(days)
+	payload, err := h.svc.InventoryMovement(c.Request.Context(), days)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -122,7 +122,7 @@ func (h *Handler) InventoryMovement(c *gin.Context) {
 // @Failure 401 {object} response.Body
 // @Router /dashboard/category-distribution [get]
 func (h *Handler) CategoryDistribution(c *gin.Context) {
-	payload, err := h.svc.CategoryDistribution()
+	payload, err := h.svc.CategoryDistribution(c.Request.Context())
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -147,7 +147,7 @@ func (h *Handler) TopSelling(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	payload, err := h.svc.TopSelling(limit)
+	payload, err := h.svc.TopSelling(c.Request.Context(), limit)
 	if err != nil {
 		response.Error(c, err)
 		return

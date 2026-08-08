@@ -2,7 +2,10 @@
 // and composes summary cards plus Recharts-shaped chart payloads.
 package dashboard
 
+// TestSentinel
+
 import (
+	"context"
 	"time"
 )
 
@@ -17,17 +20,17 @@ const MaxMovementDays = 365
 
 // Repository abstracts the aggregation queries behind the dashboard service.
 type Repository interface {
-	CountProducts() (int64, error)
-	CountCategories() (int64, error)
-	InventoryValue() (float64, error)
-	LowStockItems() ([]*LowStockItem, error)
-	RecentActivities(limit int) ([]*RecentActivity, error)
-	Activities(page, perPage int) ([]*RecentActivity, int64, error)
-	TopSellers(limit int) ([]*TopSeller, error)
-	InventoryMovement(since time.Time) ([]*DayMovement, error)
-	CategoryDistribution() ([]*CategoryCount, error)
-	StockHealth() (StockHealth, error)
-	TotalQuantity() (int64, error)
+	CountProducts(ctx context.Context) (int64, error)
+	CountCategories(ctx context.Context) (int64, error)
+	InventoryValue(ctx context.Context) (float64, error)
+	LowStockItems(ctx context.Context) ([]*LowStockItem, error)
+	RecentActivities(ctx context.Context, limit int) ([]*RecentActivity, error)
+	Activities(ctx context.Context, page, perPage int) ([]*RecentActivity, int64, error)
+	TopSellers(ctx context.Context, limit int) ([]*TopSeller, error)
+	InventoryMovement(ctx context.Context, since time.Time) ([]*DayMovement, error)
+	CategoryDistribution(ctx context.Context) ([]*CategoryCount, error)
+	StockHealth(ctx context.Context) (StockHealth, error)
+	TotalQuantity(ctx context.Context) (int64, error)
 }
 
 // Service composes dashboard aggregates into response payloads.
@@ -65,28 +68,28 @@ type ChartDataset struct {
 }
 
 // Summary fetches every KPI card plus the dashboard widgets in one pass.
-func (s *Service) Summary() (*Summary, error) {
-	products, err := s.repo.CountProducts()
+func (s *Service) Summary(ctx context.Context) (*Summary, error) {
+	products, err := s.repo.CountProducts(ctx)
 	if err != nil {
 		return nil, err
 	}
-	categories, err := s.repo.CountCategories()
+	categories, err := s.repo.CountCategories(ctx)
 	if err != nil {
 		return nil, err
 	}
-	value, err := s.repo.InventoryValue()
+	value, err := s.repo.InventoryValue(ctx)
 	if err != nil {
 		return nil, err
 	}
-	lowStock, err := s.repo.LowStockItems()
+	lowStock, err := s.repo.LowStockItems(ctx)
 	if err != nil {
 		return nil, err
 	}
-	recent, err := s.repo.RecentActivities(RecentActivityLimit)
+	recent, err := s.repo.RecentActivities(ctx, RecentActivityLimit)
 	if err != nil {
 		return nil, err
 	}
-	health, err := s.repo.StockHealth()
+	health, err := s.repo.StockHealth(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -104,14 +107,14 @@ func (s *Service) Summary() (*Summary, error) {
 }
 
 // Activities returns a paginated, newest-first page of audit events.
-func (s *Service) Activities(page, perPage int) ([]*RecentActivity, int64, error) {
-	return s.repo.Activities(page, perPage)
+func (s *Service) Activities(ctx context.Context, page, perPage int) ([]*RecentActivity, int64, error) {
+	return s.repo.Activities(ctx, page, perPage)
 }
 
 // InventoryMovement returns per-day in/out/net/ending series for the last
 // `days` calendar days. Ending balances walk backward from the current total
 // quantity, so the most recent day always equals the live stock count.
-func (s *Service) InventoryMovement(days int) (*ChartPayload, error) {
+func (s *Service) InventoryMovement(ctx context.Context, days int) (*ChartPayload, error) {
 	if days < 1 {
 		days = DefaultMovementDays
 	}
@@ -123,11 +126,11 @@ func (s *Service) InventoryMovement(days int) (*ChartPayload, error) {
 	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).
 		AddDate(0, 0, -(days - 1))
 
-	moves, err := s.repo.InventoryMovement(since)
+	moves, err := s.repo.InventoryMovement(ctx, since)
 	if err != nil {
 		return nil, err
 	}
-	total, err := s.repo.TotalQuantity()
+	total, err := s.repo.TotalQuantity(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -172,8 +175,8 @@ func (s *Service) InventoryMovement(days int) (*ChartPayload, error) {
 }
 
 // CategoryDistribution returns product counts per category as a bar payload.
-func (s *Service) CategoryDistribution() (*ChartPayload, error) {
-	counts, err := s.repo.CategoryDistribution()
+func (s *Service) CategoryDistribution(ctx context.Context) (*ChartPayload, error) {
+	counts, err := s.repo.CategoryDistribution(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -194,11 +197,11 @@ func (s *Service) CategoryDistribution() (*ChartPayload, error) {
 }
 
 // TopSelling returns the top `limit` products by units sold as a bar payload.
-func (s *Service) TopSelling(limit int) (*ChartPayload, error) {
+func (s *Service) TopSelling(ctx context.Context, limit int) (*ChartPayload, error) {
 	if limit < 1 || limit > 50 {
 		limit = 5
 	}
-	sellers, err := s.repo.TopSellers(limit)
+	sellers, err := s.repo.TopSellers(ctx, limit)
 	if err != nil {
 		return nil, err
 	}

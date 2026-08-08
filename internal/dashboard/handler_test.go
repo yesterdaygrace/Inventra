@@ -44,12 +44,12 @@ func doReq(t *testing.T, r *gin.Engine, path string) *httptest.ResponseRecorder 
 
 func TestSummaryOK(t *testing.T) {
 	m := new(mockRepo)
-	m.On("CountProducts").Return(int64(3), nil)
-	m.On("CountCategories").Return(int64(1), nil)
-	m.On("InventoryValue").Return(100.0, nil)
-	m.On("LowStockItems").Return([]*LowStockItem{}, nil)
-	m.On("RecentActivities", RecentActivityLimit).Return([]*RecentActivity{}, nil)
-	m.On("StockHealth").Return(StockHealth{}, nil)
+	m.On("CountProducts", mock.Anything).Return(int64(3), nil)
+	m.On("CountCategories", mock.Anything).Return(int64(1), nil)
+	m.On("InventoryValue", mock.Anything).Return(100.0, nil)
+	m.On("LowStockItems", mock.Anything).Return([]*LowStockItem{}, nil)
+	m.On("RecentActivities", mock.Anything, RecentActivityLimit).Return([]*RecentActivity{}, nil)
+	m.On("StockHealth", mock.Anything).Return(StockHealth{}, nil)
 
 	w := doReq(t, setupEngine(m), "/api/v1/dashboard/summary")
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -64,7 +64,7 @@ func TestSummaryOK(t *testing.T) {
 
 func TestActivityOK(t *testing.T) {
 	m := new(mockRepo)
-	m.On("Activities", 0, 0).Return([]*RecentActivity{{Action: "CREATE"}}, int64(1), nil)
+	m.On("Activities", mock.Anything, 0, 0).Return([]*RecentActivity{{Action: "CREATE"}}, int64(1), nil)
 	r := setupEngine(m)
 	w := doReq(t, r, "/api/v1/dashboard/activity")
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -80,7 +80,7 @@ func TestActivityOK(t *testing.T) {
 
 func TestActivityServiceError(t *testing.T) {
 	m := new(mockRepo)
-	m.On("Activities", 0, 0).Return(nil, int64(0), errBoom)
+	m.On("Activities", mock.Anything, 0, 0).Return(nil, int64(0), errBoom)
 	r := setupEngine(m)
 	w := doReq(t, r, "/api/v1/dashboard/activity")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -88,7 +88,7 @@ func TestActivityServiceError(t *testing.T) {
 
 func TestSummaryServiceError(t *testing.T) {
 	m := new(mockRepo)
-	m.On("CountProducts").Return(int64(0), errBoom)
+	m.On("CountProducts", mock.Anything).Return(int64(0), errBoom)
 	r := setupEngine(m)
 	w := doReq(t, r, "/api/v1/dashboard/summary")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -96,8 +96,8 @@ func TestSummaryServiceError(t *testing.T) {
 
 func TestInventoryMovementOK(t *testing.T) {
 	m := new(mockRepo)
-	m.On("InventoryMovement", mock.AnythingOfType("time.Time")).Return([]*DayMovement{}, nil)
-	m.On("TotalQuantity").Return(int64(5), nil)
+	m.On("InventoryMovement", mock.Anything, mock.AnythingOfType("time.Time")).Return([]*DayMovement{}, nil)
+	m.On("TotalQuantity", mock.Anything).Return(int64(5), nil)
 
 	r := setupEngine(m)
 	w := doReq(t, r, "/api/v1/dashboard/inventory-movement?days=7")
@@ -121,7 +121,7 @@ func TestInventoryMovementInvalidDays(t *testing.T) {
 
 func TestCategoryDistributionOK(t *testing.T) {
 	m := new(mockRepo)
-	m.On("CategoryDistribution").Return([]*CategoryCount{{Name: "Books", Count: 2}}, nil)
+	m.On("CategoryDistribution", mock.Anything).Return([]*CategoryCount{{Name: "Books", Count: 2}}, nil)
 	r := setupEngine(m)
 	w := doReq(t, r, "/api/v1/dashboard/category-distribution")
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -135,7 +135,7 @@ func TestCategoryDistributionOK(t *testing.T) {
 
 func TestTopSellingOK(t *testing.T) {
 	m := new(mockRepo)
-	m.On("TopSellers", 5).Return([]*TopSeller{{Name: "Widget", UnitsSold: 9}}, nil)
+	m.On("TopSellers", mock.Anything, 5).Return([]*TopSeller{{Name: "Widget", UnitsSold: 9}}, nil)
 	r := setupEngine(m)
 	w := doReq(t, r, "/api/v1/dashboard/top-selling")
 	assert.Equal(t, http.StatusOK, w.Code)

@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -90,15 +91,15 @@ func TestRepoCountsAndValue(t *testing.T) {
 	seedQuantity(t, db, laptop.ID, 2)
 	seedQuantity(t, db, mouse.ID, 1)
 
-	products, err := repo.CountProducts()
+	products, err := repo.CountProducts(context.Background(), )
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), products)
 
-	categories, err := repo.CountCategories()
+	categories, err := repo.CountCategories(context.Background(), )
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), categories)
 
-	value, err := repo.InventoryValue()
+	value, err := repo.InventoryValue(context.Background(), )
 	require.NoError(t, err)
 	// No IN cost recorded yet: quantity * list price fallback.
 	assert.Equal(t, 2020.0, value)
@@ -118,7 +119,7 @@ func TestRepoInventoryValueUsesLastStockInCost(t *testing.T) {
 	unitCost := 50.0
 	seedMovement(t, db, p.ID, "IN", 10, &unitCost)
 
-	value, err := repo.InventoryValue()
+	value, err := repo.InventoryValue(context.Background(), )
 	require.NoError(t, err)
 	assert.Equal(t, 500.0, value)
 }
@@ -137,7 +138,7 @@ func TestRepoLowStockItems(t *testing.T) {
 	seedQuantity(t, db, low.ID, 3)
 	seedQuantity(t, db, high.ID, 20)
 
-	items, err := repo.LowStockItems()
+	items, err := repo.LowStockItems(context.Background(), )
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "Low Widget", items[0].Name)
@@ -159,7 +160,7 @@ func TestRepoStockHealth(t *testing.T) {
 	seedQuantity(t, db, healthy.ID, 50)
 	seedQuantity(t, db, low.ID, 3)
 
-	health, err := repo.StockHealth()
+	health, err := repo.StockHealth(context.Background(), )
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), health.Healthy)
 	assert.Equal(t, int64(1), health.Low)
@@ -181,13 +182,13 @@ func TestRepoTopSellersAndDistribution(t *testing.T) {
 	seedMovement(t, db, p1.ID, "OUT", 7, nil)
 	seedMovement(t, db, p2.ID, "OUT", 3, nil)
 
-	sellers, err := repo.TopSellers(1)
+	sellers, err := repo.TopSellers(context.Background(), 1)
 	require.NoError(t, err)
 	require.Len(t, sellers, 1)
 	assert.Equal(t, "Novel", sellers[0].Name)
 	assert.Equal(t, 7, sellers[0].UnitsSold)
 
-	dist, err := repo.CategoryDistribution()
+	dist, err := repo.CategoryDistribution(context.Background(), )
 	require.NoError(t, err)
 	require.Len(t, dist, 2)
 	assert.Equal(t, "Books", dist[0].Name)
@@ -212,7 +213,7 @@ func TestRepoRecentActivitiesAndMovement(t *testing.T) {
 		Action: "CREATE", EntityType: "product", EntityID: &eid, UserID: nil, IP: &uid,
 	}).Error)
 
-	recent, err := repo.RecentActivities(5)
+	recent, err := repo.RecentActivities(context.Background(), 5)
 	require.NoError(t, err)
 	require.Len(t, recent, 1)
 	assert.Equal(t, "CREATE", recent[0].Action)
@@ -224,7 +225,7 @@ func TestRepoRecentActivitiesAndMovement(t *testing.T) {
 	seedMovement(t, db, p.ID, "OUT", 4, nil)
 
 	since := time.Now().AddDate(0, 0, -1)
-	moves, err := repo.InventoryMovement(since)
+	moves, err := repo.InventoryMovement(context.Background(), since)
 	require.NoError(t, err)
 	require.Len(t, moves, 1)
 	assert.Equal(t, 10, moves[0].StockIn)
@@ -245,7 +246,7 @@ func TestRepoTotalQuantity(t *testing.T) {
 	seedQuantity(t, db, p1.ID, 3)
 	seedQuantity(t, db, p2.ID, 7)
 
-	total, err := repo.TotalQuantity()
+	total, err := repo.TotalQuantity(context.Background(), )
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), total)
 }
