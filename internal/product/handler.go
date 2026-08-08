@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"inventory/internal/shared/audit"
+	"inventory/internal/shared/dbutil"
 	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/export"
 	"inventory/internal/shared/middleware"
@@ -166,7 +167,7 @@ func (h *Handler) List(c *gin.Context) {
 		catID = id
 	}
 
-	prods, total, err := h.svc.List(ListQuery{
+	prods, total, err := h.svc.List(c.Request.Context(), ListQuery{
 		Q:          req.Q,
 		CategoryID: catID,
 		MinPrice:   req.MinPrice,
@@ -187,14 +188,7 @@ func (h *Handler) List(c *gin.Context) {
 		items = append(items, productResponse(p))
 	}
 
-	page := req.Page
-	if page < 1 {
-		page = 1
-	}
-	perPage := req.PerPage
-	if perPage < 1 {
-		perPage = 20
-	}
+	page, perPage := dbutil.NormalizePage(req.Page, req.PerPage)
 	totalPages := 0
 	if perPage > 0 {
 		totalPages = int((total + int64(perPage) - 1) / int64(perPage))
@@ -223,7 +217,7 @@ func (h *Handler) Get(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	p, err := h.svc.Get(id)
+	p, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -261,7 +255,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	p, err := h.svc.Create(req.Name, req.SKU, req.Description, req.Price, catID, req.LowStockThreshold, req.IsArchived)
+	p, err := h.svc.Create(c.Request.Context(), req.Name, req.SKU, req.Description, req.Price, catID, req.LowStockThreshold, req.IsArchived)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -303,7 +297,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	p, err := h.svc.Update(id, req.Name, req.SKU, req.Description, req.Price, catID, req.LowStockThreshold, req.IsArchived)
+	p, err := h.svc.Update(c.Request.Context(), id, req.Name, req.SKU, req.Description, req.Price, catID, req.LowStockThreshold, req.IsArchived)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -332,12 +326,12 @@ func (h *Handler) Delete(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	if err := h.svc.Delete(id); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		response.Error(c, err)
 		return
 	}
-	h.record(c, "DELETE", id.String(), nil)
-	response.Message(c, "product deleted")
+	h.record(c, "DELETE", id.String(), gin.H{"archived": true})
+	response.Message(c, "product archived")
 }
 
 // Export handles GET /products/export — CSV download of all products.
@@ -348,10 +342,19 @@ func (h *Handler) Delete(c *gin.Context) {
 // @Success 200
 // @Router /products/export [get]
 func (h *Handler) Export(c *gin.Context) {
-	prods, _, err := h.svc.List(ListQuery{PerPage: 1000})
-	if err != nil {
-		response.Error(c, err)
-		return
+	// The list repository caps per_page (≤100), so page through the whole
+	// catalog instead of requesting an unclamped page.
+	var prods []*Product
+	for page := 1; ; page++ {
+		pageProds, total, err := h.svc.List(c.Request.Context(), ListQuery{Page: page, PerPage: 100})
+		if err != nil {
+			response.Error(c, err)
+			return
+		}
+		prods = append(prods, pageProds...)
+		if len(pageProds) == 0 || len(prods) >= int(total) {
+			break
+		}
 	}
 
 	rows := make([][]string, 0, len(prods))
@@ -374,5 +377,7 @@ func (h *Handler) Export(c *gin.Context) {
 	}
 
 	export.SetAttachment(c, "products")
-	_ = export.WriteCSV(c.Writer, []string{"id", "name", "sku", "price", "category_name", "low_stock_threshold", "is_archived", "description", "created_at"}, rows)
+	if err := export.WriteCSV(c.Writer, []string{"id", "name", "sku", "price", "category_name", "low_stock_threshold", "is_archived", "description", "created_at"}, rows); err != nil {
+		return
+	}
 }

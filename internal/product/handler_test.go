@@ -3,8 +3,10 @@ package product
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -60,7 +62,7 @@ func decodeProduct(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 func TestListPublic(t *testing.T) {
 	m := new(mockRepo)
 	prods := []*Product{{ID: uuid.New(), Name: "Widget"}}
-	m.On("List", mock.MatchedBy(func(q ListQuery) bool { return q.Q == "widget" })).
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool { return q.Q == "widget" })).
 		Return(prods, int64(1), nil)
 
 	r := setupProductEngine(m, fakeParser{role: "STAFF"})
@@ -100,10 +102,10 @@ func TestCreateAdminOK(t *testing.T) {
 	m := new(mockRepo)
 	catID := uuid.New()
 	id := uuid.New()
-	m.On("SKUExists", "W1", uuid.Nil).Return(false, nil)
-	m.On("Create", mock.MatchedBy(func(p *Product) bool { return p.Name == "Widget" && p.CategoryID == catID })).
+	m.On("SKUExists", mock.Anything, "W1", uuid.Nil).Return(false, nil)
+	m.On("Create", mock.Anything, mock.MatchedBy(func(p *Product) bool { return p.Name == "Widget" && p.CategoryID == catID })).
 		Return(nil).Run(func(args mock.Arguments) {
-		args.Get(0).(*Product).ID = id
+		args.Get(1).(*Product).ID = id
 	})
 
 	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
@@ -118,7 +120,7 @@ func TestCreateAdminOK(t *testing.T) {
 func TestHandlerCreateDuplicateSKUConflict(t *testing.T) {
 	m := new(mockRepo)
 	catID := uuid.New()
-	m.On("SKUExists", "W1", uuid.Nil).Return(true, nil)
+	m.On("SKUExists", mock.Anything, "W1", uuid.Nil).Return(true, nil)
 
 	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
 	body := `{"name":"Widget","sku":"W1","price":10,"category_id":"` + catID.String() + `"}`
@@ -130,7 +132,7 @@ func TestHandlerCreateDuplicateSKUConflict(t *testing.T) {
 func TestGetPublic(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("Get", id).Return(&Product{ID: id, Name: "Widget"}, nil)
+	m.On("Get", mock.Anything, id).Return(&Product{ID: id, Name: "Widget"}, nil)
 
 	r := setupProductEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/products/"+id.String(), "", "")
@@ -141,7 +143,7 @@ func TestGetPublic(t *testing.T) {
 func TestHandlerGetNotFound(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("Get", id).Return(nil, sharederr.ErrNotFound)
+	m.On("Get", mock.Anything, id).Return(nil, sharederr.ErrNotFound)
 
 	r := setupProductEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/products/"+id.String(), "", "")
@@ -152,9 +154,9 @@ func TestUpdateAdminOK(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
 	catID := uuid.New()
-	m.On("SKUExists", "W2", id).Return(false, nil)
-	m.On("Get", id).Return(&Product{ID: id, Name: "Old", CategoryID: catID}, nil)
-	m.On("Update", mock.Anything).Return(nil)
+	m.On("SKUExists", mock.Anything, "W2", id).Return(false, nil)
+	m.On("Get", mock.Anything, id).Return(&Product{ID: id, Name: "Old", CategoryID: catID}, nil)
+	m.On("Update", mock.Anything, mock.Anything).Return(nil)
 
 	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
 	body := `{"name":"New","sku":"W2","price":20,"category_id":"` + catID.String() + `"}`
@@ -176,8 +178,8 @@ func TestHandlerUpdateNotFound(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
 	catID := uuid.New()
-	m.On("SKUExists", "W3", id).Return(false, nil)
-	m.On("Get", id).Return(nil, sharederr.ErrNotFound)
+	m.On("SKUExists", mock.Anything, "W3", id).Return(false, nil)
+	m.On("Get", mock.Anything, id).Return(nil, sharederr.ErrNotFound)
 
 	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
 	body := `{"name":"New","sku":"W3","category_id":"` + catID.String() + `"}`
@@ -194,7 +196,7 @@ func TestListInvalidCategoryID(t *testing.T) {
 
 func TestListArchivedFilter(t *testing.T) {
 	m := new(mockRepo)
-	m.On("List", mock.MatchedBy(func(q ListQuery) bool {
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool {
 		return q.IsArchived != nil && *q.IsArchived
 	})).Return([]*Product{}, int64(0), nil)
 
@@ -206,7 +208,7 @@ func TestListArchivedFilter(t *testing.T) {
 func TestDeleteAdminOK(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("Delete", id).Return(nil)
+	m.On("Delete", mock.Anything, id).Return(nil)
 
 	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
 	w := doReq(t, r, "DELETE", "/api/v1/products/"+id.String(), "", "tok")
@@ -216,7 +218,7 @@ func TestDeleteAdminOK(t *testing.T) {
 func TestExportCSV(t *testing.T) {
 	m := new(mockRepo)
 	prods := []*Product{{ID: uuid.New(), Name: "Widget", SKU: "W1"}}
-	m.On("List", mock.Anything).Return(prods, int64(1), nil)
+	m.On("List", mock.Anything, mock.Anything).Return(prods, int64(1), nil)
 
 	r := setupProductEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/products/export", "", "")
@@ -225,4 +227,31 @@ func TestExportCSV(t *testing.T) {
 	assert.Equal(t, "text/csv", w.Header().Get("Content-Type"))
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment; filename=")
 	assert.Contains(t, w.Body.String(), "id,name,sku")
+}
+
+// TestExportPaginatesBeyondCap guards the regression where export passed
+// PerPage=1000 but the list repository clamps it to ≤100, silently dropping
+// rows beyond the first page.
+func TestExportPaginatesBeyondCap(t *testing.T) {
+	m := new(mockRepo)
+	const total = 120
+	page1 := make([]*Product, 100)
+	for i := range page1 {
+		page1[i] = &Product{ID: uuid.New(), Name: fmt.Sprintf("P%03d", i), SKU: fmt.Sprintf("S%03d", i)}
+	}
+	page2 := make([]*Product, total-100)
+	for i := range page2 {
+		page2[i] = &Product{ID: uuid.New(), Name: fmt.Sprintf("Q%02d", i), SKU: fmt.Sprintf("R%03d", i)}
+	}
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool { return q.Page == 1 && q.PerPage == 100 })).
+		Return(page1, int64(total), nil)
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool { return q.Page == 2 && q.PerPage == 100 })).
+		Return(page2, int64(total), nil)
+
+	r := setupProductEngine(m, nil)
+	w := doReq(t, r, "GET", "/api/v1/products/export", "", "")
+
+	require.Equal(t, http.StatusOK, w.Code)
+	lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
+	assert.Len(t, lines, total+1, "header + every row must be exported across pages")
 }

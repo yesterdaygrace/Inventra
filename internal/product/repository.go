@@ -2,11 +2,13 @@
 package product
 
 import (
+	"context"
 	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"inventory/internal/shared/dbutil"
 	sharederr "inventory/internal/shared/errors"
 )
 
@@ -22,12 +24,12 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 
 // Create persists a new product, translating unique-SKU and category FK
 // violations so API clients receive typed errors instead of a generic 500.
-func (r *GORMRepository) Create(p *Product) error {
-	if err := r.db.Create(p).Error; err != nil {
+func (r *GORMRepository) Create(ctx context.Context, p *Product) error {
+	if err := r.db.WithContext(ctx).Create(p).Error; err != nil {
 		switch {
-		case isUniqueViolation(err):
+		case dbutil.IsUniqueViolation(err):
 			return sharederr.ErrConflict
-		case isForeignKeyViolation(err):
+		case dbutil.IsForeignKeyViolation(err):
 			return sharederr.ErrNotFound
 		default:
 			return err
@@ -37,9 +39,9 @@ func (r *GORMRepository) Create(p *Product) error {
 }
 
 // Get returns a product by ID with its category.
-func (r *GORMRepository) Get(id uuid.UUID) (*Product, error) {
+func (r *GORMRepository) Get(ctx context.Context, id uuid.UUID) (*Product, error) {
 	var p Product
-	if err := r.db.Preload("Category").Where("id = ?", id).First(&p).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("Category").Where("id = ?", id).First(&p).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -50,12 +52,12 @@ func (r *GORMRepository) Get(id uuid.UUID) (*Product, error) {
 
 // Update persists product changes, translating unique-SKU and category FK
 // violations into typed errors instead of a generic 500.
-func (r *GORMRepository) Update(p *Product) error {
-	if err := r.db.Save(p).Error; err != nil {
+func (r *GORMRepository) Update(ctx context.Context, p *Product) error {
+	if err := r.db.WithContext(ctx).Save(p).Error; err != nil {
 		switch {
-		case isUniqueViolation(err):
+		case dbutil.IsUniqueViolation(err):
 			return sharederr.ErrConflict
-		case isForeignKeyViolation(err):
+		case dbutil.IsForeignKeyViolation(err):
 			return sharederr.ErrNotFound
 		default:
 			return err
@@ -64,9 +66,13 @@ func (r *GORMRepository) Update(p *Product) error {
 	return nil
 }
 
-// Delete removes a product row.
-func (r *GORMRepository) Delete(id uuid.UUID) error {
-	res := r.db.Delete(&Product{}, "id = ?", id)
+// Delete soft-archives a product (sets IsArchived=true) rather than removing
+// the row, so historical inventory and audit references remain intact. The
+// documented contract is a soft archive, not a physical delete.
+func (r *GORMRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	res := r.db.WithContext(ctx).Model(&Product{}).
+		Where("id = ?", id).
+		Update("is_archived", true)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -79,8 +85,8 @@ func (r *GORMRepository) Delete(id uuid.UUID) error {
 // List returns a filtered, sorted, paginated page of products plus the total
 // match count. All dynamic WHERE/ORDER/LIMIT/OFFSET values are parameterized
 // or whitelisted, so user input cannot be injected.
-func (r *GORMRepository) List(q ListQuery) ([]*Product, int64, error) {
-	db := r.db.Model(&Product{})
+func (r *GORMRepository) List(ctx context.Context, q ListQuery) ([]*Product, int64, error) {
+	db := r.db.WithContext(ctx).Model(&Product{})
 
 	db = applyFilters(db, q)
 
@@ -89,12 +95,7 @@ func (r *GORMRepository) List(q ListQuery) ([]*Product, int64, error) {
 		return nil, 0, err
 	}
 
-	if q.Page < 1 {
-		q.Page = 1
-	}
-	if q.PerPage < 1 || q.PerPage > 100 {
-		q.PerPage = 20
-	}
+	q.Page, q.PerPage = dbutil.NormalizePage(q.Page, q.PerPage)
 	order := orderBy(q.Sort)
 
 	var prods []*Product
@@ -109,8 +110,8 @@ func (r *GORMRepository) List(q ListQuery) ([]*Product, int64, error) {
 }
 
 // SKUExists reports whether any product (other than excludeID) has the SKU.
-func (r *GORMRepository) SKUExists(sku string, excludeID uuid.UUID) (bool, error) {
-	db := r.db.Model(&Product{}).Where("LOWER(sku) = ?", strings.ToLower(strings.TrimSpace(sku)))
+func (r *GORMRepository) SKUExists(ctx context.Context, sku string, excludeID uuid.UUID) (bool, error) {
+	db := r.db.WithContext(ctx).Model(&Product{}).Where("LOWER(sku) = ?", strings.ToLower(strings.TrimSpace(sku)))
 	if excludeID != uuid.Nil {
 		db = db.Where("id <> ?", excludeID)
 	}
@@ -176,20 +177,4 @@ func orderBy(raw string) string {
 		}
 		return "name ASC"
 	}
-}
-
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
-}
-
-// isForeignKeyViolation reports whether err is a PostgreSQL FK constraint
-// violation (SQLSTATE 23503), e.g. a product referencing a deleted category.
-func isForeignKeyViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "violates foreign key constraint")
 }

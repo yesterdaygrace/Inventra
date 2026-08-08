@@ -1,6 +1,7 @@
 package product
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -49,7 +50,7 @@ func TestRepoCreateGetRoundtrip(t *testing.T) {
 
 	p := mustProduct(t, db, &Product{Name: "Laptop", SKU: "LAP-001", Price: 999, CategoryID: cat.ID, LowStockThreshold: 5})
 
-	got, err := repo.Get(p.ID)
+	got, err := repo.Get(context.Background(), p.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Laptop", got.Name)
 	assert.Equal(t, "LAP-001", got.SKU)
@@ -65,7 +66,7 @@ func TestRepoCreateUniqueSKUConflict(t *testing.T) {
 	cat := mustCategory(t, db, "Electronics")
 	mustProduct(t, db, &Product{Name: "A", SKU: "DUP", Price: 1, CategoryID: cat.ID})
 
-	err := repo.Create(&Product{Name: "B", SKU: "DUP", Price: 2, CategoryID: cat.ID})
+	err := repo.Create(context.Background(), &Product{Name: "B", SKU: "DUP", Price: 2, CategoryID: cat.ID})
 	assert.ErrorIs(t, err, sharederr.ErrConflict)
 }
 
@@ -77,11 +78,11 @@ func TestRepoSKUExists(t *testing.T) {
 	cat := mustCategory(t, db, "Electronics")
 	wid := mustProduct(t, db, &Product{Name: "Widget", SKU: "wid", Price: 2, CategoryID: cat.ID})
 
-	exists, err := repo.SKUExists("WID", uuid.Nil)
+	exists, err := repo.SKUExists(context.Background(), "WID", uuid.Nil)
 	require.NoError(t, err)
 	assert.True(t, exists, "case-insensitive SKU match expected")
 
-	exists, err = repo.SKUExists("WID", wid.ID)
+	exists, err = repo.SKUExists(context.Background(), "WID", wid.ID)
 	require.NoError(t, err)
 	assert.False(t, exists, "excluded own row should not count")
 }
@@ -99,9 +100,9 @@ func TestRepoUpdate(t *testing.T) {
 	p.SKU = "UPD"
 	p.CategoryID = cat2.ID
 	p.Price = 20
-	require.NoError(t, repo.Update(p))
+	require.NoError(t, repo.Update(context.Background(), p))
 
-	got, err := repo.Get(p.ID)
+	got, err := repo.Get(context.Background(), p.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "New", got.Name)
 	assert.Equal(t, "Books", got.Category.Name)
@@ -116,13 +117,13 @@ func TestRepoDelete(t *testing.T) {
 	cat := mustCategory(t, db, "Electronics")
 	p := mustProduct(t, db, &Product{Name: "Gone", SKU: "DEL", Price: 1, CategoryID: cat.ID})
 
-	require.NoError(t, repo.Delete(p.ID))
+	require.NoError(t, repo.Delete(context.Background(), p.ID))
 
-	got, err := repo.Get(p.ID)
-	assert.ErrorIs(t, err, sharederr.ErrNotFound)
-	assert.Nil(t, got)
+	got, err := repo.Get(context.Background(), p.ID)
+	require.NoError(t, err)
+	assert.True(t, got.IsArchived, "soft-archive should keep the row, flagged archived")
 
-	assert.ErrorIs(t, repo.Delete(p.ID), sharederr.ErrNotFound)
+	assert.ErrorIs(t, repo.Delete(context.Background(), uuid.New()), sharederr.ErrNotFound)
 }
 
 func TestRepoGetNotFound(t *testing.T) {
@@ -130,7 +131,7 @@ func TestRepoGetNotFound(t *testing.T) {
 		t.Skip("skipping DB test in short mode")
 	}
 	_, repo := setupForRepo(t)
-	got, err := repo.Get(uuid.New())
+	got, err := repo.Get(context.Background(), uuid.New())
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 	assert.Nil(t, got)
 }
@@ -145,7 +146,7 @@ func TestRepoListSortEdges(t *testing.T) {
 	mustProduct(t, db, &Product{Name: "A", SKU: "SKU-A", Price: 2, CategoryID: cat.ID})
 
 	for _, sort := range []string{"name", "-name", "price", "-price", "created_at", "-created_at", "sku", "-sku", "garbage"} {
-		prods, _, err := repo.List(ListQuery{Sort: sort, Page: 1, PerPage: 10})
+		prods, _, err := repo.List(context.Background(), ListQuery{Sort: sort, Page: 1, PerPage: 10})
 		require.NoError(t, err, "sort %q", sort)
 		assert.NotEmpty(t, prods, "sort %q should return rows", sort)
 	}
@@ -160,13 +161,13 @@ func TestRepoListSearchAndSort(t *testing.T) {
 	mustProduct(t, db, &Product{Name: "Alpha", SKU: "SKU-A", Price: 30, CategoryID: cat.ID})
 	mustProduct(t, db, &Product{Name: "Beta", SKU: "SKU-B", Price: 10, CategoryID: cat.ID})
 
-	prods, total, err := repo.List(ListQuery{Q: "beta", Sort: "price", Page: 1, PerPage: 10})
+	prods, total, err := repo.List(context.Background(), ListQuery{Q: "beta", Sort: "price", Page: 1, PerPage: 10})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, prods, 1)
 	assert.Equal(t, "Beta", prods[0].Name)
 
-	prods, total, err = repo.List(ListQuery{Sort: "-price", Page: 1, PerPage: 10})
+	prods, total, err = repo.List(context.Background(), ListQuery{Sort: "-price", Page: 1, PerPage: 10})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total)
 	assert.Equal(t, "Alpha", prods[0].Name)
@@ -183,7 +184,7 @@ func TestRepoListPriceRangeFilter(t *testing.T) {
 	mustProduct(t, db, &Product{Name: "Pricey", SKU: "P", Price: 500, CategoryID: cat.ID})
 
 	min, max := 10.0, 100.0
-	prods, total, err := repo.List(ListQuery{MinPrice: &min, MaxPrice: &max, Page: 1, PerPage: 10})
+	prods, total, err := repo.List(context.Background(), ListQuery{MinPrice: &min, MaxPrice: &max, Page: 1, PerPage: 10})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Equal(t, "Mid", prods[0].Name)
@@ -199,7 +200,7 @@ func TestRepoListCategoryFilter(t *testing.T) {
 	mustProduct(t, db, &Product{Name: "A1", SKU: "A1", Price: 1, CategoryID: catA.ID})
 	mustProduct(t, db, &Product{Name: "B1", SKU: "B1", Price: 1, CategoryID: catB.ID})
 
-	prods, total, err := repo.List(ListQuery{CategoryID: catA.ID, Page: 1, PerPage: 10})
+	prods, total, err := repo.List(context.Background(), ListQuery{CategoryID: catA.ID, Page: 1, PerPage: 10})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Equal(t, "A1", prods[0].Name)
@@ -215,7 +216,7 @@ func TestRepoListArchivedFilter(t *testing.T) {
 	mustProduct(t, db, &Product{Name: "Dead", SKU: "D", Price: 1, CategoryID: cat.ID, IsArchived: true})
 
 	archived := true
-	prods, total, err := repo.List(ListQuery{IsArchived: &archived, Page: 1, PerPage: 10})
+	prods, total, err := repo.List(context.Background(), ListQuery{IsArchived: &archived, Page: 1, PerPage: 10})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Equal(t, "Dead", prods[0].Name)
@@ -233,7 +234,7 @@ func TestRepoListLowStock(t *testing.T) {
 	require.NoError(t, db.Exec("INSERT INTO inventory (product_id, quantity) VALUES (?, 3)", low.ID).Error)
 	require.NoError(t, db.Exec("INSERT INTO inventory (product_id, quantity) VALUES (?, 20)", high.ID).Error)
 
-	prods, total, err := repo.List(ListQuery{LowStock: true, Page: 1, PerPage: 10})
+	prods, total, err := repo.List(context.Background(), ListQuery{LowStock: true, Page: 1, PerPage: 10})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, prods, 1)
@@ -250,7 +251,7 @@ func TestRepoListPagination(t *testing.T) {
 		mustProduct(t, db, &Product{Name: "P", SKU: "S" + string(rune('A'+i)), Price: 1, CategoryID: cat.ID})
 	}
 
-	prods, total, err := repo.List(ListQuery{Page: 1, PerPage: 2})
+	prods, total, err := repo.List(context.Background(), ListQuery{Page: 1, PerPage: 2})
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), total)
 	assert.Len(t, prods, 2)
