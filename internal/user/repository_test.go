@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -58,11 +59,11 @@ func TestRepo_FindRoleByName(t *testing.T) {
 	admin := createRole(t, db, "ADMIN")
 	repo := NewGORMRepository(db)
 
-	got, err := repo.FindRoleByName("ADMIN")
+	got, err := repo.FindRoleByName(context.Background(), "ADMIN")
 	require.NoError(t, err)
 	assert.Equal(t, admin.ID, got.ID)
 
-	_, err = repo.FindRoleByName("NOPE")
+	_, err = repo.FindRoleByName(context.Background(), "NOPE")
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 }
 
@@ -75,12 +76,12 @@ func TestRepo_FindByID(t *testing.T) {
 	u := createUser(t, db, "Alice", "alice@example.com", staff.ID, true)
 	repo := NewGORMRepository(db)
 
-	got, err := repo.FindByID(u.ID)
+	got, err := repo.FindByID(context.Background(), u.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Alice", got.Name)
 	assert.Equal(t, "STAFF", got.Role.Name)
 
-	_, err = repo.FindByID(uuid.New())
+	_, err = repo.FindByID(context.Background(), uuid.New())
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 }
 
@@ -95,9 +96,9 @@ func TestRepo_Update(t *testing.T) {
 
 	u.Name = "Alice Updated"
 	u.IsActive = false
-	require.NoError(t, repo.Update(&u))
+	require.NoError(t, repo.Update(context.Background(), &u))
 
-	got, err := repo.FindByID(u.ID)
+	got, err := repo.FindByID(context.Background(), u.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Alice Updated", got.Name)
 	assert.False(t, got.IsActive)
@@ -116,33 +117,33 @@ func TestRepo_ListSearchRolePagination(t *testing.T) {
 	repo := NewGORMRepository(db)
 
 	// filter by name substring
-	users, total, err := repo.List(Query{Name: "carol"})
+	users, total, err := repo.List(context.Background(), Query{Name: "carol"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Len(t, users, 1)
 	assert.Equal(t, "Carol Staff", users[0].Name)
 
 	// filter by email substring
-	users, total, err = repo.List(Query{Email: "bob"})
+	users, total, err = repo.List(context.Background(), Query{Email: "bob"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Len(t, users, 1)
 	assert.Equal(t, "Bob Staff", users[0].Name)
 
 	// role filter
-	users, total, err = repo.List(Query{Role: "STAFF"})
+	users, total, err = repo.List(context.Background(), Query{Role: "STAFF"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total)
 	assert.Len(t, users, 2)
 
 	// pagination: per_page 2 -> page 2 returns remaining
-	users, total, err = repo.List(Query{Page: 2, PerPage: 2})
+	users, total, err = repo.List(context.Background(), Query{Page: 2, PerPage: 2})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
 	assert.Len(t, users, 1)
 
 	// no matches
-	users, total, err = repo.List(Query{Name: "zzz"})
+	users, total, err = repo.List(context.Background(), Query{Name: "zzz"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), total)
 	assert.Empty(t, users)
@@ -160,7 +161,7 @@ func TestRepo_CountAdmins(t *testing.T) {
 	createUser(t, db, "Staff One", "s1@example.com", staff.ID, true)
 	repo := NewGORMRepository(db)
 
-	count, err := repo.CountAdmins()
+	count, err := repo.CountAdmins(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), count)
 }

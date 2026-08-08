@@ -2,6 +2,7 @@
 package user
 
 import (
+	"context"
 	"strings"
 
 	"github.com/google/uuid"
@@ -22,8 +23,8 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 
 // List returns a page of users matching the filters plus the total count
 // of matches before paging.
-func (r *GORMRepository) List(q Query) ([]*User, int64, error) {
-	db := r.db.Model(&User{})
+func (r *GORMRepository) List(ctx context.Context, q Query) ([]*User, int64, error) {
+	db := r.db.WithContext(ctx).Model(&User{})
 
 	if q.Name != "" {
 		db = db.Where("LOWER(name) LIKE ?", "%"+strings.ToLower(q.Name)+"%")
@@ -62,7 +63,7 @@ func (r *GORMRepository) List(q Query) ([]*User, int64, error) {
 }
 
 // FindByID returns a user by primary key.
-func (r *GORMRepository) FindByID(id uuid.UUID) (*User, error) {
+func (r *GORMRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	var u User
 	if err := r.db.Preload("Role").Where("id = ?", id).First(&u).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -74,9 +75,9 @@ func (r *GORMRepository) FindByID(id uuid.UUID) (*User, error) {
 }
 
 // FindByEmail returns a user by exact email address.
-func (r *GORMRepository) FindByEmail(email string) (*User, error) {
+func (r *GORMRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
 	var u User
-	if err := r.db.Where("email = ?", email).First(&u).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&u).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -86,14 +87,14 @@ func (r *GORMRepository) FindByEmail(email string) (*User, error) {
 }
 
 // Update persists user changes.
-func (r *GORMRepository) Update(u *User) error {
-	return r.db.Save(u).Error
+func (r *GORMRepository) Update(ctx context.Context, u *User) error {
+	return r.db.WithContext(ctx).Save(u).Error
 }
 
 // FindRoleByName returns a role by exact name.
-func (r *GORMRepository) FindRoleByName(name string) (*Role, error) {
+func (r *GORMRepository) FindRoleByName(ctx context.Context, name string) (*Role, error) {
 	var role Role
-	if err := r.db.Where("name = ?", name).First(&role).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("name = ?", name).First(&role).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -103,9 +104,9 @@ func (r *GORMRepository) FindRoleByName(name string) (*Role, error) {
 }
 
 // CountAdmins returns the number of ADMIN users.
-func (r *GORMRepository) CountAdmins() (int64, error) {
+func (r *GORMRepository) CountAdmins(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.Model(&User{}).
+	err := r.db.WithContext(ctx).Model(&User{}).
 		Joins("JOIN roles ON roles.id = users.role_id").
 		Where("roles.name = ? AND users.is_active = ?", "ADMIN", true).
 		Count(&count).Error

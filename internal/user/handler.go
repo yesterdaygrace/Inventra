@@ -134,7 +134,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	users, total, err := h.svc.List(Query{
+	users, total, err := h.svc.List(c.Request.Context(), Query{
 		Name:     req.Name,
 		Email:    req.Email,
 		Role:     req.Role,
@@ -191,7 +191,7 @@ func (h *Handler) Get(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	u, err := h.svc.Get(id)
+	u, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -232,7 +232,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 
 	actorID := middleware.UserIDFromContext(c)
-	u, err := h.svc.UpdateProfile(id, actorID, req.Name, req.Email, req.IsActive)
+	u, err := h.svc.UpdateProfile(c.Request.Context(), id, actorID, req.Name, req.Email, req.IsActive)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -263,7 +263,7 @@ func (h *Handler) Deactivate(c *gin.Context) {
 	}
 
 	actorID := middleware.UserIDFromContext(c)
-	if _, err := h.svc.Deactivate(id, actorID); err != nil {
+	if _, err := h.svc.Deactivate(c.Request.Context(), id, actorID); err != nil {
 		response.Error(c, err)
 		return
 	}
@@ -303,7 +303,7 @@ func (h *Handler) AssignRole(c *gin.Context) {
 		return
 	}
 
-	u, err := h.svc.AssignRole(id, req.Role)
+	u, err := h.svc.AssignRole(c.Request.Context(), id, req.Role)
 	if err != nil {
 		response.Error(c, err)
 		return

@@ -71,7 +71,7 @@ func TestListAdminOK(t *testing.T) {
 	users := []*User{
 		{ID: uuid.New(), Name: "Admin", Email: "admin@example.com", Role: Role{Name: "ADMIN"}, IsActive: true},
 	}
-	m.On("List", mock.MatchedBy(func(q Query) bool { return q.Page == 1 })).
+	m.On("List", mock.Anything, mock.MatchedBy(func(q Query) bool { return q.Page == 1 })).
 		Return(users, int64(1), nil)
 
 	r := setupUserEngine(m, fakeParser{userID: adminID, role: "ADMIN"})
@@ -103,7 +103,7 @@ func TestGetUser(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
 	u := &User{ID: id, Name: "Alice", Email: "alice@example.com", Role: Role{Name: "STAFF"}, IsActive: true}
-	m.On("FindByID", id).Return(u, nil)
+	m.On("FindByID", mock.Anything, id).Return(u, nil)
 
 	r := setupUserEngine(m, fakeParser{userID: uuid.New(), role: "ADMIN"})
 	w := doReq(t, r, "GET", "/api/v1/users/"+id.String(), "", "tok")
@@ -115,7 +115,7 @@ func TestGetUser(t *testing.T) {
 func TestGetUserNotFound(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("FindByID", id).Return(nil, sharederr.ErrNotFound)
+	m.On("FindByID", mock.Anything, id).Return(nil, sharederr.ErrNotFound)
 
 	r := setupUserEngine(m, &fakeParser{userID: uuid.New(), role: "ADMIN"})
 	w := doReq(t, r, "GET", "/api/v1/users/"+id.String(), "", "tok")
@@ -126,8 +126,8 @@ func TestUpdateUser(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
 	u := &User{ID: id, Email: "a@example.com", Name: "Old"}
-	m.On("FindByID", id).Return(u, nil)
-	m.On("Update", mock.Anything).Return(nil)
+	m.On("FindByID", mock.Anything, id).Return(u, nil)
+	m.On("Update", mock.Anything, mock.Anything).Return(nil)
 
 	r := setupUserEngine(m, &fakeParser{userID: uuid.New(), role: "ADMIN"})
 	w := doReq(t, r, "PUT", "/api/v1/users/"+id.String(), `{"name":"New"}`, "tok")
@@ -147,7 +147,7 @@ func TestUpdateUserEmptyBodyRejected(t *testing.T) {
 func TestDeleteUserRejectsSelf(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("FindByID", id).Return(&User{ID: id}, nil)
+	m.On("FindByID", mock.Anything, id).Return(&User{ID: id}, nil)
 
 	r := setupUserEngine(m, &fakeParser{userID: id, role: "ADMIN"})
 	w := doReq(t, r, "DELETE", "/api/v1/users/"+id.String(), "", "tok")
@@ -159,9 +159,9 @@ func TestAssignRoleHandler(t *testing.T) {
 	id := uuid.New()
 	role := &Role{ID: uuid.New(), Name: "ADMIN"}
 	u := &User{ID: id, Name: "Alice"}
-	m.On("FindRoleByName", "ADMIN").Return(role, nil)
-	m.On("FindByID", id).Return(u, nil)
-	m.On("Update", mock.Anything).Return(nil)
+	m.On("FindRoleByName", mock.Anything, "ADMIN").Return(role, nil)
+	m.On("FindByID", mock.Anything, id).Return(u, nil)
+	m.On("Update", mock.Anything, mock.Anything).Return(nil)
 
 	r := setupUserEngine(m, &fakeParser{userID: uuid.New(), role: "ADMIN"})
 	w := doReq(t, r, "PUT", "/api/v1/users/"+id.String()+"/role", `{"role":"ADMIN"}`, "tok")
