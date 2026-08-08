@@ -1,6 +1,7 @@
 package category
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -17,39 +18,39 @@ type mockRepo struct {
 	mock.Mock
 }
 
-func (m *mockRepo) Create(c *Category) error {
-	args := m.Called(c)
+func (m *mockRepo) Create(ctx context.Context, c *Category) error {
+	args := m.Called(ctx, c)
 	return args.Error(0)
 }
 
-func (m *mockRepo) Get(id uuid.UUID) (*Category, error) {
-	args := m.Called(id)
+func (m *mockRepo) Get(ctx context.Context, id uuid.UUID) (*Category, error) {
+	args := m.Called(ctx, id)
 	if c, ok := args.Get(0).(*Category); ok {
 		return c, args.Error(1)
 	}
 	return nil, args.Error(1)
 }
 
-func (m *mockRepo) Update(c *Category) error {
-	args := m.Called(c)
+func (m *mockRepo) Update(ctx context.Context, c *Category) error {
+	args := m.Called(ctx, c)
 	return args.Error(0)
 }
 
-func (m *mockRepo) Delete(id uuid.UUID) error {
-	args := m.Called(id)
+func (m *mockRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *mockRepo) List(q ListQuery) ([]*Category, int64, error) {
-	args := m.Called(q)
+func (m *mockRepo) List(ctx context.Context, q ListQuery) ([]*Category, int64, error) {
+	args := m.Called(ctx, q)
 	if cats, ok := args.Get(0).([]*Category); ok {
 		return cats, args.Get(1).(int64), args.Error(2)
 	}
 	return nil, args.Get(1).(int64), args.Error(2)
 }
 
-func (m *mockRepo) CountProductsFor(id uuid.UUID) (int64, error) {
-	args := m.Called(id)
+func (m *mockRepo) CountProductsFor(ctx context.Context, id uuid.UUID) (int64, error) {
+	args := m.Called(ctx, id)
 	return args.Get(0).(int64), args.Error(1)
 }
 
@@ -57,42 +58,42 @@ func newSvc(repo Repository) *Service { return NewService(repo) }
 
 func TestCreateValidatesEmptyName(t *testing.T) {
 	m := new(mockRepo)
-	_, err := newSvc(m).Create("   ", nil)
+	_, err := newSvc(m).Create(context.Background(), "   ", nil)
 	assert.ErrorIs(t, err, sharederr.ErrValidation)
 }
 
 func TestCreateTrimsNameAndDescription(t *testing.T) {
 	m := new(mockRepo)
 	desc := "  electronics   "
-	m.On("Create", mock.MatchedBy(func(c *Category) bool {
+	m.On("Create", mock.Anything, mock.MatchedBy(func(c *Category) bool {
 		return c.Name == "Electronics" && *c.Description == "electronics"
 	})).Return(nil)
 
-	got, err := newSvc(m).Create("  Electronics  ", &desc)
+	got, err := newSvc(m).Create(context.Background(), "  Electronics  ", &desc)
 	require.NoError(t, err)
 	assert.Equal(t, "Electronics", got.Name)
 }
 
 func TestCreateConflict(t *testing.T) {
 	m := new(mockRepo)
-	m.On("Create", mock.Anything).Return(sharederr.ErrConflict)
-	_, err := newSvc(m).Create("Books", nil)
+	m.On("Create", mock.Anything, mock.Anything).Return(sharederr.ErrConflict)
+	_, err := newSvc(m).Create(context.Background(), "Books", nil)
 	assert.ErrorIs(t, err, sharederr.ErrConflict)
 }
 
 func TestGet(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("Get", id).Return(&Category{ID: id, Name: "Books"}, nil)
+	m.On("Get", mock.Anything, id).Return(&Category{ID: id, Name: "Books"}, nil)
 
-	got, err := newSvc(m).Get(id)
+	got, err := newSvc(m).Get(context.Background(), id)
 	require.NoError(t, err)
 	assert.Equal(t, "Books", got.Name)
 }
 
 func TestUpdateValidatesEmptyName(t *testing.T) {
 	m := new(mockRepo)
-	_, err := newSvc(m).Update(uuid.New(), " ", nil)
+	_, err := newSvc(m).Update(context.Background(), uuid.New(), " ", nil, nil)
 	assert.ErrorIs(t, err, sharederr.ErrValidation)
 	m.AssertNotCalled(t, "Get", mock.Anything)
 }
@@ -101,10 +102,10 @@ func TestUpdate(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
 	existing := &Category{ID: id, Name: "Old"}
-	m.On("Get", id).Return(existing, nil)
-	m.On("Update", mock.Anything).Return(nil)
+	m.On("Get", mock.Anything, id).Return(existing, nil)
+	m.On("Update", mock.Anything, mock.Anything).Return(nil)
 
-	got, err := newSvc(m).Update(id, "New", nil)
+	got, err := newSvc(m).Update(context.Background(), id, "New", nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "New", got.Name)
 }
@@ -112,18 +113,18 @@ func TestUpdate(t *testing.T) {
 func TestUpdateNotFound(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("Get", id).Return(nil, sharederr.ErrNotFound)
+	m.On("Get", mock.Anything, id).Return(nil, sharederr.ErrNotFound)
 
-	_, err := newSvc(m).Update(id, "New", nil)
+	_, err := newSvc(m).Update(context.Background(), id, "New", nil, nil)
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 }
 
 func TestDeleteRejectsInUse(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("CountProductsFor", id).Return(int64(3), nil)
+	m.On("CountProductsFor", mock.Anything, id).Return(int64(3), nil)
 
-	err := newSvc(m).Delete(id)
+	err := newSvc(m).Delete(context.Background(), id)
 	assert.ErrorIs(t, err, sharederr.ErrConflict)
 	m.AssertNotCalled(t, "Delete", mock.Anything)
 }
@@ -131,21 +132,21 @@ func TestDeleteRejectsInUse(t *testing.T) {
 func TestDeleteOK(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("CountProductsFor", id).Return(int64(0), nil)
-	m.On("Delete", id).Return(nil)
+	m.On("CountProductsFor", mock.Anything, id).Return(int64(0), nil)
+	m.On("Delete", mock.Anything, id).Return(nil)
 
-	err := newSvc(m).Delete(id)
+	err := newSvc(m).Delete(context.Background(), id)
 	assert.NoError(t, err)
 }
 
 func TestListPassesSearchAndPagination(t *testing.T) {
 	m := new(mockRepo)
 	cats := []*Category{{Name: "Books"}}
-	m.On("List", mock.MatchedBy(func(q ListQuery) bool {
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool {
 		return q.Search == "boo" && q.Page == 2
 	})).Return(cats, int64(1), nil)
 
-	got, total, err := newSvc(m).List(ListQuery{Search: "boo", Page: 2})
+	got, total, err := newSvc(m).List(context.Background(), ListQuery{Search: "boo", Page: 2})
 	require.NoError(t, err)
 	assert.Len(t, got, 1)
 	assert.Equal(t, int64(1), total)
@@ -153,9 +154,9 @@ func TestListPassesSearchAndPagination(t *testing.T) {
 
 func TestListPropagatesError(t *testing.T) {
 	m := new(mockRepo)
-	m.On("List", mock.Anything).Return(nil, int64(0), errors.New("db down"))
+	m.On("List", mock.Anything, mock.Anything).Return(nil, int64(0), errors.New("db down"))
 
-	_, _, err := newSvc(m).List(ListQuery{})
+	_, _, err := newSvc(m).List(context.Background(), ListQuery{})
 	assert.Error(t, err)
 }
 

@@ -3,8 +3,10 @@ package category
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -60,7 +62,7 @@ func decodeCategory(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 func TestListPublicPaginated(t *testing.T) {
 	m := new(mockRepo)
 	cats := []*Category{{Name: "Electronics"}}
-	m.On("List", mock.MatchedBy(func(q ListQuery) bool { return q.Search == "elec" })).
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool { return q.Search == "elec" })).
 		Return(cats, int64(1), nil)
 
 	r := setupCategoryEngine(m, fakeParser{role: "STAFF"})
@@ -91,9 +93,9 @@ func TestCreateUnauthenticated(t *testing.T) {
 func TestCreateAdminOK(t *testing.T) {
 	m := new(mockRepo)
 	cat := &Category{ID: uuid.New(), Name: "Books"}
-	m.On("Create", mock.MatchedBy(func(c *Category) bool { return c.Name == "Books" })).
+	m.On("Create", mock.Anything, mock.MatchedBy(func(c *Category) bool { return c.Name == "Books" })).
 		Return(nil).Run(func(args mock.Arguments) {
-		args.Get(0).(*Category).ID = cat.ID
+		args.Get(1).(*Category).ID = cat.ID
 	})
 
 	r := setupCategoryEngine(m, fakeParser{role: "ADMIN"})
@@ -115,7 +117,7 @@ func TestCreateValidation(t *testing.T) {
 func TestHandlerGet(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("Get", id).Return(&Category{ID: id, Name: "Electronics"}, nil)
+	m.On("Get", mock.Anything, id).Return(&Category{ID: id, Name: "Electronics"}, nil)
 
 	r := setupCategoryEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/categories/"+id.String(), "", "")
@@ -126,7 +128,7 @@ func TestHandlerGet(t *testing.T) {
 func TestGetNotFound(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("Get", id).Return(nil, sharederr.ErrNotFound)
+	m.On("Get", mock.Anything, id).Return(nil, sharederr.ErrNotFound)
 
 	r := setupCategoryEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/categories/"+id.String(), "", "")
@@ -136,8 +138,8 @@ func TestGetNotFound(t *testing.T) {
 func TestUpdateAdminOK(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("Get", id).Return(&Category{ID: id, Name: "Old"}, nil)
-	m.On("Update", mock.Anything).Return(nil)
+	m.On("Get", mock.Anything, id).Return(&Category{ID: id, Name: "Old"}, nil)
+	m.On("Update", mock.Anything, mock.Anything).Return(nil)
 
 	r := setupCategoryEngine(m, fakeParser{role: "ADMIN"})
 	w := doReq(t, r, "PUT", "/api/v1/categories/"+id.String(), `{"name":"New"}`, "tok")
@@ -156,7 +158,7 @@ func TestUpdateStaffForbidden(t *testing.T) {
 func TestDeleteInUseConflict(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("CountProductsFor", id).Return(int64(1), nil)
+	m.On("CountProductsFor", mock.Anything, id).Return(int64(1), nil)
 
 	r := setupCategoryEngine(m, fakeParser{role: "ADMIN"})
 	w := doReq(t, r, "DELETE", "/api/v1/categories/"+id.String(), "", "tok")
@@ -166,8 +168,8 @@ func TestDeleteInUseConflict(t *testing.T) {
 func TestHandlerDeleteOK(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()
-	m.On("CountProductsFor", id).Return(int64(0), nil)
-	m.On("Delete", id).Return(nil)
+	m.On("CountProductsFor", mock.Anything, id).Return(int64(0), nil)
+	m.On("Delete", mock.Anything, id).Return(nil)
 
 	r := setupCategoryEngine(m, fakeParser{role: "ADMIN"})
 	w := doReq(t, r, "DELETE", "/api/v1/categories/"+id.String(), "", "tok")
@@ -177,7 +179,7 @@ func TestHandlerDeleteOK(t *testing.T) {
 func TestExportCSV(t *testing.T) {
 	m := new(mockRepo)
 	cats := []*Category{{ID: uuid.New(), Name: "Books"}}
-	m.On("List", mock.Anything).Return(cats, int64(1), nil)
+	m.On("List", mock.Anything, mock.Anything).Return(cats, int64(1), nil)
 
 	r := setupCategoryEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/categories/export", "", "")
@@ -186,4 +188,30 @@ func TestExportCSV(t *testing.T) {
 	assert.Equal(t, "text/csv", w.Header().Get("Content-Type"))
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment; filename=")
 	assert.Contains(t, w.Body.String(), "id,name,description,created_at")
+}
+
+// TestExportPaginatesBeyondCap guards the category export against the
+// per-page cap silently dropping rows beyond the first 100 categories.
+func TestExportPaginatesBeyondCap(t *testing.T) {
+	m := new(mockRepo)
+	const total = 120
+	page1 := make([]*Category, 100)
+	for i := range page1 {
+		page1[i] = &Category{ID: uuid.New(), Name: fmt.Sprintf("Cat%03d", i)}
+	}
+	page2 := make([]*Category, total-100)
+	for i := range page2 {
+		page2[i] = &Category{ID: uuid.New(), Name: fmt.Sprintf("More%02d", i)}
+	}
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool { return q.Page == 1 && q.PerPage == 100 })).
+		Return(page1, int64(total), nil)
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool { return q.Page == 2 && q.PerPage == 100 })).
+		Return(page2, int64(total), nil)
+
+	r := setupCategoryEngine(m, nil)
+	w := doReq(t, r, "GET", "/api/v1/categories/export", "", "")
+
+	require.Equal(t, http.StatusOK, w.Code)
+	lines := strings.Split(strings.TrimSpace(w.Body.String()), "\n")
+	assert.Len(t, lines, total+1, "header + every row must be exported across pages")
 }

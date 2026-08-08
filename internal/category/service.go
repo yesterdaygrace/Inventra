@@ -3,6 +3,7 @@
 package category
 
 import (
+	"context"
 	"strings"
 
 	"github.com/google/uuid"
@@ -12,20 +13,21 @@ import (
 
 // ListQuery carries list filters, sort, and pagination.
 type ListQuery struct {
-	Search  string // substring match on name (case-insensitive)
-	Sort    string // "name" or "created_at" (default "name"); "-" prefix = desc
-	Page    int
-	PerPage int
+	Search   string // substring match on name (case-insensitive)
+	IsActive *bool
+	Sort     string // "name" or "created_at" (default "name"); "-" prefix = desc
+	Page     int
+	PerPage  int
 }
 
 // Repository abstracts persistence for the category service.
 type Repository interface {
-	Create(c *Category) error
-	Get(id uuid.UUID) (*Category, error)
-	Update(c *Category) error
-	Delete(id uuid.UUID) error
-	List(q ListQuery) ([]*Category, int64, error)
-	CountProductsFor(id uuid.UUID) (int64, error)
+	Create(ctx context.Context, c *Category) error
+	Get(ctx context.Context, id uuid.UUID) (*Category, error)
+	Update(ctx context.Context, c *Category) error
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, q ListQuery) ([]*Category, int64, error)
+	CountProductsFor(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
 // Service orchestrates category management.
@@ -39,57 +41,60 @@ func NewService(repo Repository) *Service {
 }
 
 // Create validates and persists a new category.
-func (s *Service) Create(name string, description *string) (*Category, error) {
+func (s *Service) Create(ctx context.Context, name string, description *string) (*Category, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, sharederr.ErrValidation
 	}
 	c := &Category{Name: name, Description: trimDescription(description)}
-	if err := s.repo.Create(c); err != nil {
+	if err := s.repo.Create(ctx, c); err != nil {
 		return nil, err
 	}
 	return c, nil
 }
 
 // Get returns a category by ID.
-func (s *Service) Get(id uuid.UUID) (*Category, error) {
-	return s.repo.Get(id)
+func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Category, error) {
+	return s.repo.Get(ctx, id)
 }
 
-// Update changes a category name/description.
-func (s *Service) Update(id uuid.UUID, name string, description *string) (*Category, error) {
+// Update changes a category name/description/active flag.
+func (s *Service) Update(ctx context.Context, id uuid.UUID, name string, description *string, isActive *bool) (*Category, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, sharederr.ErrValidation
 	}
-	c, err := s.repo.Get(id)
+	c, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	c.Name = name
 	c.Description = trimDescription(description)
-	if err := s.repo.Update(c); err != nil {
+	if isActive != nil {
+		c.IsActive = *isActive
+	}
+	if err := s.repo.Update(ctx, c); err != nil {
 		return nil, err
 	}
 	return c, nil
 }
 
 // Delete removes a category provided no product references it.
-func (s *Service) Delete(id uuid.UUID) error {
-	count, err := s.repo.CountProductsFor(id)
+func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	count, err := s.repo.CountProductsFor(ctx, id)
 	if err != nil {
 		return err
 	}
 	if count > 0 {
 		return sharederr.ErrConflict
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(ctx, id)
 }
 
 // List is a pass-through to the repository list.
-func (s *Service) List(q ListQuery) ([]*Category, int64, error) {
+func (s *Service) List(ctx context.Context, q ListQuery) ([]*Category, int64, error) {
 	q.Search = strings.TrimSpace(q.Search)
-	return s.repo.List(q)
+	return s.repo.List(ctx, q)
 }
 
 func trimDescription(d *string) *string {

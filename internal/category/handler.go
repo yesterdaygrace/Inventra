@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"inventory/internal/shared/audit"
+	"inventory/internal/shared/dbutil"
 	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/export"
 	"inventory/internal/shared/middleware"
@@ -52,10 +53,11 @@ func (h *Handler) record(c *gin.Context, action, entityID string, details gin.H)
 }
 
 type listCategoriesRequest struct {
-	Page    int    `form:"page"`
-	PerPage int    `form:"per_page"`
-	Name    string `form:"name"`
-	Sort    string `form:"sort"`
+	Page     int    `form:"page"`
+	PerPage  int    `form:"per_page"`
+	Name     string `form:"name"`
+	IsActive string `form:"is_active"`
+	Sort     string `form:"sort"`
 }
 
 type createCategoryRequest struct {
@@ -66,23 +68,28 @@ type createCategoryRequest struct {
 type updateCategoryRequest struct {
 	Name        string  `json:"name"`
 	Description *string `json:"description"`
+	IsActive    *bool   `json:"is_active"`
 }
 
 type categoryEnvelope struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Description *string   `json:"description,omitempty"`
-	CreatedAt   string    `json:"created_at"`
-	UpdatedAt   string    `json:"updated_at"`
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	Description  *string   `json:"description,omitempty"`
+	IsActive     bool      `json:"is_active"`
+	ProductCount int64     `json:"product_count"`
+	CreatedAt    string    `json:"created_at"`
+	UpdatedAt    string    `json:"updated_at"`
 }
 
 func categoryResponse(c *Category) categoryEnvelope {
 	return categoryEnvelope{
-		ID:          c.ID,
-		Name:        c.Name,
-		Description: c.Description,
-		CreatedAt:   c.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:   c.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		ID:           c.ID,
+		Name:         c.Name,
+		Description:  c.Description,
+		IsActive:     c.IsActive,
+		ProductCount: c.ProductCount,
+		CreatedAt:    c.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:    c.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 }
 
@@ -105,11 +112,14 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	cats, total, err := h.svc.List(ListQuery{
-		Search:  req.Name,
-		Sort:    req.Sort,
-		Page:    req.Page,
-		PerPage: req.PerPage,
+	isActive := parseActiveFilter(req.IsActive)
+
+	cats, total, err := h.svc.List(c.Request.Context(), ListQuery{
+		Search:   req.Name,
+		IsActive: isActive,
+		Sort:     req.Sort,
+		Page:     req.Page,
+		PerPage:  req.PerPage,
 	})
 	if err != nil {
 		response.Error(c, err)
@@ -121,14 +131,7 @@ func (h *Handler) List(c *gin.Context) {
 		items = append(items, categoryResponse(cat))
 	}
 
-	page := req.Page
-	if page < 1 {
-		page = 1
-	}
-	perPage := req.PerPage
-	if perPage < 1 {
-		perPage = 20
-	}
+	page, perPage := dbutil.NormalizePage(req.Page, req.PerPage)
 	totalPages := 0
 	if perPage > 0 {
 		totalPages = int((total + int64(perPage) - 1) / int64(perPage))
@@ -157,7 +160,7 @@ func (h *Handler) Get(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	cat, err := h.svc.Get(id)
+	cat, err := h.svc.Get(c.Request.Context(), id)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -189,7 +192,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	cat, err := h.svc.Create(req.Name, req.Description)
+	cat, err := h.svc.Create(c.Request.Context(), req.Name, req.Description)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -225,12 +228,12 @@ func (h *Handler) Update(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	if strings.TrimSpace(req.Name) == "" && req.Description == nil {
+	if strings.TrimSpace(req.Name) == "" && req.Description == nil && req.IsActive == nil {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
 
-	cat, err := h.svc.Update(id, req.Name, req.Description)
+	cat, err := h.svc.Update(c.Request.Context(), id, req.Name, req.Description, req.IsActive)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -260,12 +263,12 @@ func (h *Handler) Delete(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	if err := h.svc.Delete(id); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		response.Error(c, err)
 		return
 	}
-	h.record(c, "DELETE", id.String(), nil)
-	response.Message(c, "category deleted")
+	h.record(c, "DELETE", id.String(), gin.H{"deactivated": true})
+	response.Message(c, "category deactivated")
 }
 
 // Export handles GET /categories/export — CSV download.
@@ -276,10 +279,17 @@ func (h *Handler) Delete(c *gin.Context) {
 // @Success 200
 // @Router /categories/export [get]
 func (h *Handler) Export(c *gin.Context) {
-	cats, _, err := h.svc.List(ListQuery{PerPage: 1000})
-	if err != nil {
-		response.Error(c, err)
-		return
+	var cats []*Category
+	for page := 1; ; page++ {
+		pageCats, total, err := h.svc.List(c.Request.Context(), ListQuery{Page: page, PerPage: 100})
+		if err != nil {
+			response.Error(c, err)
+			return
+		}
+		cats = append(cats, pageCats...)
+		if len(pageCats) == 0 || len(cats) >= int(total) {
+			break
+		}
 	}
 
 	rows := make([][]string, 0, len(cats))
@@ -295,4 +305,19 @@ func (h *Handler) Export(c *gin.Context) {
 	if err := export.WriteCSV(c.Writer, []string{"id", "name", "description", "created_at"}, rows); err != nil {
 		return
 	}
+}
+
+// parseActiveFilter converts an "is_active=true|false" query value into a
+// *bool filter (nil when absent).
+func parseActiveFilter(s string) *bool {
+	var v *bool
+	switch s {
+	case "true":
+		t := true
+		v = &t
+	case "false":
+		f := false
+		v = &f
+	}
+	return v
 }

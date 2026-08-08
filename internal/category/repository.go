@@ -2,7 +2,10 @@
 package category
 
 import (
+	"context"
 	"strings"
+
+	"inventory/internal/shared/dbutil"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -21,9 +24,9 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 }
 
 // Create persists a new category, translating unique-name violations.
-func (r *GORMRepository) Create(c *Category) error {
-	if err := r.db.Create(c).Error; err != nil {
-		if isUniqueViolation(err) {
+func (r *GORMRepository) Create(ctx context.Context, c *Category) error {
+	if err := r.db.WithContext(ctx).Create(c).Error; err != nil {
+		if dbutil.IsUniqueViolation(err) {
 			return sharederr.ErrConflict
 		}
 		return err
@@ -32,9 +35,9 @@ func (r *GORMRepository) Create(c *Category) error {
 }
 
 // Get returns a category by ID.
-func (r *GORMRepository) Get(id uuid.UUID) (*Category, error) {
+func (r *GORMRepository) Get(ctx context.Context, id uuid.UUID) (*Category, error) {
 	var c Category
-	if err := r.db.Where("id = ?", id).First(&c).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&c).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -44,9 +47,9 @@ func (r *GORMRepository) Get(id uuid.UUID) (*Category, error) {
 }
 
 // Update persists category changes, translating unique-name violations.
-func (r *GORMRepository) Update(c *Category) error {
-	if err := r.db.Save(c).Error; err != nil {
-		if isUniqueViolation(err) {
+func (r *GORMRepository) Update(ctx context.Context, c *Category) error {
+	if err := r.db.WithContext(ctx).Save(c).Error; err != nil {
+		if dbutil.IsUniqueViolation(err) {
 			return sharederr.ErrConflict
 		}
 		return err
@@ -55,8 +58,10 @@ func (r *GORMRepository) Update(c *Category) error {
 }
 
 // Delete removes a category row.
-func (r *GORMRepository) Delete(id uuid.UUID) error {
-	res := r.db.Delete(&Category{}, "id = ?", id)
+func (r *GORMRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	res := r.db.WithContext(ctx).Model(&Category{}).
+		Where("id = ?", id).
+		Update("is_active", false)
 	if res.Error != nil {
 		return res.Error
 	}
@@ -68,8 +73,8 @@ func (r *GORMRepository) Delete(id uuid.UUID) error {
 
 // List returns a page of categories matching the search, sorted, plus the
 // total match count before paging.
-func (r *GORMRepository) List(q ListQuery) ([]*Category, int64, error) {
-	db := r.db.Model(&Category{})
+func (r *GORMRepository) List(ctx context.Context, q ListQuery) ([]*Category, int64, error) {
+	db := r.db.WithContext(ctx).Model(&Category{})
 
 	if q.Search != "" {
 		db = db.Where("LOWER(name) LIKE ?", "%"+strings.ToLower(q.Search)+"%")
@@ -88,12 +93,12 @@ func (r *GORMRepository) List(q ListQuery) ([]*Category, int64, error) {
 	}
 
 	order := "name ASC"
-	switch {
-	case q.Sort == "-name":
+	switch q.Sort {
+	case "-name":
 		order = "name DESC"
-	case q.Sort == "created_at":
+	case "created_at":
 		order = "created_at ASC"
-	case q.Sort == "-created_at":
+	case "-created_at":
 		order = "created_at DESC"
 	}
 
@@ -110,18 +115,10 @@ func (r *GORMRepository) List(q ListQuery) ([]*Category, int64, error) {
 // CountProductsFor counts products referencing the given category.
 // It queries the physical products table directly (product imports
 // category, so importing the model here would create an import cycle).
-func (r *GORMRepository) CountProductsFor(id uuid.UUID) (int64, error) {
+func (r *GORMRepository) CountProductsFor(ctx context.Context, id uuid.UUID) (int64, error) {
 	var count int64
-	err := r.db.Table("products").
-		Where("category_id = ?", id).
+	err := r.db.WithContext(ctx).Table("products").
+		Where("category_id = ? AND is_archived = ?", id, false).
 		Count(&count).Error
 	return count, err
-}
-
-// isUniqueViolation detects a PostgreSQL unique-constraint violation.
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
 }
