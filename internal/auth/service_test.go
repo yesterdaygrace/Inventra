@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -18,68 +19,68 @@ type mockRepo struct {
 	mock.Mock
 }
 
-func (m *mockRepo) CreateUser(u *User) error {
-	args := m.Called(u)
+func (m *mockRepo) CreateUser(ctx context.Context, u *User) error {
+	args := m.Called(ctx, u)
 	return args.Error(0)
 }
 
-func (m *mockRepo) FindUserByEmail(email string) (*User, error) {
-	args := m.Called(email)
+func (m *mockRepo) FindUserByEmail(ctx context.Context, email string) (*User, error) {
+	args := m.Called(ctx, email)
 	if u, ok := args.Get(0).(*User); ok {
 		return u, args.Error(1)
 	}
 	return nil, args.Error(1)
 }
 
-func (m *mockRepo) FindUserByID(id uuid.UUID) (*User, error) {
-	args := m.Called(id)
+func (m *mockRepo) FindUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	args := m.Called(ctx, id)
 	if u, ok := args.Get(0).(*User); ok {
 		return u, args.Error(1)
 	}
 	return nil, args.Error(1)
 }
 
-func (m *mockRepo) UpdateUser(u *User) error {
-	args := m.Called(u)
+func (m *mockRepo) UpdateUser(ctx context.Context, u *User) error {
+	args := m.Called(ctx, u)
 	return args.Error(0)
 }
 
-func (m *mockRepo) FindRoleByName(name string) (*Role, error) {
-	args := m.Called(name)
+func (m *mockRepo) FindRoleByName(ctx context.Context, name string) (*Role, error) {
+	args := m.Called(ctx, name)
 	if r, ok := args.Get(0).(*Role); ok {
 		return r, args.Error(1)
 	}
 	return nil, args.Error(1)
 }
 
-func (m *mockRepo) FindRoleByID(id uuid.UUID) (*Role, error) {
-	args := m.Called(id)
+func (m *mockRepo) FindRoleByID(ctx context.Context, id uuid.UUID) (*Role, error) {
+	args := m.Called(ctx, id)
 	if r, ok := args.Get(0).(*Role); ok {
 		return r, args.Error(1)
 	}
 	return nil, args.Error(1)
 }
 
-func (m *mockRepo) CreateRefreshToken(t *RefreshToken) error {
-	args := m.Called(t)
+func (m *mockRepo) CreateRefreshToken(ctx context.Context, t *RefreshToken) error {
+	args := m.Called(ctx, t)
 	return args.Error(0)
 }
 
-func (m *mockRepo) FindRefreshTokenByHash(hash string) (*RefreshToken, error) {
-	args := m.Called(hash)
+func (m *mockRepo) FindRefreshTokenByHash(ctx context.Context, hash string) (*RefreshToken, error) {
+	args := m.Called(ctx, hash)
 	if rt, ok := args.Get(0).(*RefreshToken); ok {
 		return rt, args.Error(1)
 	}
 	return nil, args.Error(1)
 }
 
-func (m *mockRepo) UpdateRefreshToken(t *RefreshToken) error {
-	args := m.Called(t)
+func (m *mockRepo) UpdateRefreshToken(ctx context.Context, t *RefreshToken) error {
+	args := m.Called(ctx, t)
 	return args.Error(0)
 }
 
-func (m *mockRepo) CreateActivityLog(entry ActivityLogEntry) error {
-	args := m.Called(entry)
+func (m *mockRepo) CreateActivityLog(ctx context.Context, entry ActivityLogEntry) error {
+	args := m.Called(ctx, entry)
 	return args.Error(0)
 }
 
@@ -100,15 +101,15 @@ func hashedPassword(pw string) string {
 
 func TestRegisterCreatesStaffUser(t *testing.T) {
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", "ada@example.com").Return(nil, sharederr.ErrNotFound)
-	repo.On("FindRoleByName", "STAFF").Return(staffRole, nil)
-	repo.On("CreateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
-		u := args.Get(0).(*User)
+	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", mock.Anything, "STAFF").Return(staffRole, nil)
+	repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		u := args.Get(1).(*User)
 		u.ID = uuid.New()
 	})
 
 	svc := newTestService(repo)
-	user, err := svc.Register(RegisterRequest{
+	user, err := svc.Register(context.Background(), RegisterRequest{
 		Name:     "Ada",
 		Email:    "Ada@Example.com",
 		Password: "password123",
@@ -126,10 +127,10 @@ func TestRegisterCreatesStaffUser(t *testing.T) {
 func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 	existing := &User{ID: uuid.New(), Email: "ada@example.com"}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", "ada@example.com").Return(existing, nil)
+	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(existing, nil)
 
 	svc := newTestService(repo)
-	_, err := svc.Register(RegisterRequest{Name: "Ada", Email: "ada@example.com", Password: "password123"})
+	_, err := svc.Register(context.Background(), RegisterRequest{Name: "Ada", Email: "ada@example.com", Password: "password123"})
 
 	assert.ErrorIs(t, err, ErrEmailTaken)
 }
@@ -145,13 +146,13 @@ func TestLoginIssuesTokens(t *testing.T) {
 		IsActive:     true,
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", "ada@example.com").Return(user, nil)
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(user, nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	svc := newTestService(repo)
-	res, err := svc.Login("ada@example.com", "secret")
+	res, err := svc.Login(context.Background(), "ada@example.com", "secret")
 
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -171,10 +172,10 @@ func TestLoginWrongPasswordUnauthorized(t *testing.T) {
 		IsActive:     true,
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", "ada@example.com").Return(user, nil)
+	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(user, nil)
 
 	svc := newTestService(repo)
-	_, err := svc.Login("ada@example.com", "wrong")
+	_, err := svc.Login(context.Background(), "ada@example.com", "wrong")
 
 	assert.ErrorIs(t, err, sharederr.ErrUnauthorized)
 }
@@ -188,10 +189,10 @@ func TestLoginInactiveUserUnauthorized(t *testing.T) {
 		IsActive:     false,
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", "ada@example.com").Return(user, nil)
+	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(user, nil)
 
 	svc := newTestService(repo)
-	_, err := svc.Login("ada@example.com", "secret")
+	_, err := svc.Login(context.Background(), "ada@example.com", "secret")
 
 	assert.ErrorIs(t, err, sharederr.ErrUnauthorized)
 }
@@ -210,18 +211,18 @@ func TestRefreshRotatesToken(t *testing.T) {
 	}
 
 	repo := &mockRepo{}
-	repo.On("FindRefreshTokenByHash", storedHash).Return(rt, nil)
-	repo.On("FindUserByID", uid).Return(user, nil)
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("UpdateRefreshToken", rt).Return(nil).Run(func(args mock.Arguments) {
-		rt := args.Get(0).(*RefreshToken)
+	repo.On("FindRefreshTokenByHash", mock.Anything, storedHash).Return(rt, nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("UpdateRefreshToken", mock.Anything, rt).Return(nil).Run(func(args mock.Arguments) {
+		rt := args.Get(1).(*RefreshToken)
 		require.NotNil(t, rt.RevokedAt, "old refresh token must be revoked")
 	})
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	svc := NewService(repo, tm, bcrypt.DefaultCost)
-	res, err := svc.Refresh(rawToken)
+	res, err := svc.Refresh(context.Background(), rawToken)
 
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -242,10 +243,10 @@ func TestRefreshRevokedTokenUnauthorized(t *testing.T) {
 		RevokedAt: &revokedAt,
 	}
 	repo := &mockRepo{}
-	repo.On("FindRefreshTokenByHash", storedHash).Return(rt, nil)
+	repo.On("FindRefreshTokenByHash", mock.Anything, storedHash).Return(rt, nil)
 
 	svc := newTestService(repo)
-	_, err := svc.Refresh("used")
+	_, err := svc.Refresh(context.Background(), "used")
 
 	assert.ErrorIs(t, err, sharederr.ErrUnauthorized)
 }
@@ -261,15 +262,15 @@ func TestLogoutRevokesToken(t *testing.T) {
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 	}
 	repo := &mockRepo{}
-	repo.On("FindRefreshTokenByHash", storedHash).Return(rt, nil)
-	repo.On("UpdateRefreshToken", rt).Return(nil).Run(func(args mock.Arguments) {
-		rt := args.Get(0).(*RefreshToken)
+	repo.On("FindRefreshTokenByHash", mock.Anything, storedHash).Return(rt, nil)
+	repo.On("UpdateRefreshToken", mock.Anything, rt).Return(nil).Run(func(args mock.Arguments) {
+		rt := args.Get(1).(*RefreshToken)
 		require.NotNil(t, rt.RevokedAt)
 	})
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	svc := newTestService(repo)
-	err := svc.Logout(rawToken)
+	err := svc.Logout(context.Background(), rawToken)
 
 	require.NoError(t, err)
 	repo.AssertExpectations(t)
@@ -277,10 +278,10 @@ func TestLogoutRevokesToken(t *testing.T) {
 
 func TestLogoutUnknownTokenIdempotent(t *testing.T) {
 	repo := &mockRepo{}
-	repo.On("FindRefreshTokenByHash", mock.Anything).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRefreshTokenByHash", mock.Anything, mock.Anything).Return(nil, sharederr.ErrNotFound)
 
 	svc := newTestService(repo)
-	err := svc.Logout("missing")
+	err := svc.Logout(context.Background(), "missing")
 
 	require.NoError(t, err)
 }
@@ -294,12 +295,12 @@ func TestChangePassword(t *testing.T) {
 		RoleID:       staffRoleID,
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByID", uid).Return(user, nil)
-	repo.On("UpdateUser", user).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("UpdateUser", mock.Anything, user).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	svc := newTestService(repo)
-	err := svc.ChangePassword(uid, "oldpass", "newpass123")
+	err := svc.ChangePassword(context.Background(), uid, "oldpass", "newpass123")
 
 	require.NoError(t, err)
 	assert.NotEqual(t, user.PasswordHash, hashedPassword("oldpass"))
@@ -315,10 +316,10 @@ func TestChangePasswordWrongOldUnauthorized(t *testing.T) {
 		PasswordHash: hashedPassword("oldpass"),
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByID", uid).Return(user, nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
 
 	svc := newTestService(repo)
-	err := svc.ChangePassword(uid, "wrong", "newpass123")
+	err := svc.ChangePassword(context.Background(), uid, "wrong", "newpass123")
 
 	assert.ErrorIs(t, err, sharederr.ErrUnauthorized)
 }
@@ -329,11 +330,11 @@ func TestUpdateProfileEmailConflict(t *testing.T) {
 	other := &User{ID: uuid.New(), Email: "taken@example.com"}
 
 	repo := &mockRepo{}
-	repo.On("FindUserByID", uid).Return(user, nil)
-	repo.On("FindUserByEmail", "taken@example.com").Return(other, nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("FindUserByEmail", mock.Anything, "taken@example.com").Return(other, nil)
 
 	svc := newTestService(repo)
-	_, err := svc.UpdateProfile(uid, "Ada", "taken@example.com")
+	_, err := svc.UpdateProfile(context.Background(), uid, "Ada", "taken@example.com")
 
 	assert.ErrorIs(t, err, ErrEmailTaken)
 }
@@ -343,12 +344,12 @@ func TestUpdateProfileUpdatesName(t *testing.T) {
 	user := &User{ID: uid, Name: "Ada", Email: "ada@example.com", RoleID: staffRoleID}
 
 	repo := &mockRepo{}
-	repo.On("FindUserByID", uid).Return(user, nil)
-	repo.On("UpdateUser", user).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("UpdateUser", mock.Anything, user).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	svc := newTestService(repo)
-	updated, err := svc.UpdateProfile(uid, "Ada Lovelace", "")
+	updated, err := svc.UpdateProfile(context.Background(), uid, "Ada Lovelace", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "Ada Lovelace", updated.Name)
@@ -358,25 +359,25 @@ func TestUpdateProfileUpdatesName(t *testing.T) {
 func TestRegisterEmptyFieldsValidation(t *testing.T) {
 	repo := &mockRepo{}
 	svc := newTestService(repo)
-	_, err := svc.Register(RegisterRequest{Name: "", Email: "", Password: ""})
+	_, err := svc.Register(context.Background(), RegisterRequest{Name: "", Email: "", Password: ""})
 	assert.ErrorIs(t, err, sharederr.ErrValidation)
 }
 
 func TestDemoLoginCreatesUserOnFirstCall(t *testing.T) {
 	uid := uuid.New()
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", DemoEmail).Return(nil, sharederr.ErrNotFound)
-	repo.On("FindRoleByName", "STAFF").Return(staffRole, nil)
-	repo.On("CreateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
-		u := args.Get(0).(*User)
+	repo.On("FindUserByEmail", mock.Anything, DemoEmail).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", mock.Anything, "STAFF").Return(staffRole, nil)
+	repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		u := args.Get(1).(*User)
 		u.ID = uid
 	})
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	svc := newTestService(repo)
-	res, err := svc.DemoLogin()
+	res, err := svc.DemoLogin(context.Background())
 
 	require.NoError(t, err)
 	require.NotNil(t, res)
@@ -392,13 +393,13 @@ func TestDemoLoginReusesExistingUser(t *testing.T) {
 	uid := uuid.New()
 	existing := &User{ID: uid, Email: DemoEmail, Name: "Demo User", RoleID: staffRoleID, IsActive: true}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", DemoEmail).Return(existing, nil)
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindUserByEmail", mock.Anything, DemoEmail).Return(existing, nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	svc := newTestService(repo)
-	res, err := svc.DemoLogin()
+	res, err := svc.DemoLogin(context.Background())
 
 	require.NoError(t, err)
 	assert.Equal(t, uid, res.User.ID)
@@ -408,11 +409,11 @@ func TestDemoLoginReusesExistingUser(t *testing.T) {
 
 func TestDemoLoginRoleLookupError(t *testing.T) {
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", DemoEmail).Return(nil, sharederr.ErrNotFound)
-	repo.On("FindRoleByName", "STAFF").Return(nil, sharederr.ErrNotFound)
+	repo.On("FindUserByEmail", mock.Anything, DemoEmail).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", mock.Anything, "STAFF").Return(nil, sharederr.ErrNotFound)
 
 	svc := newTestService(repo)
-	_, err := svc.DemoLogin()
+	_, err := svc.DemoLogin(context.Background())
 
 	require.Error(t, err)
 }

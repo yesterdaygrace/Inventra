@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -32,19 +33,19 @@ type ActivityLogEntry struct {
 
 // Repository abstracts persistence for the auth service.
 type Repository interface {
-	CreateUser(u *User) error
-	FindUserByEmail(email string) (*User, error)
-	FindUserByID(id uuid.UUID) (*User, error)
-	UpdateUser(u *User) error
+	CreateUser(ctx context.Context, u *User) error
+	FindUserByEmail(ctx context.Context, email string) (*User, error)
+	FindUserByID(ctx context.Context, id uuid.UUID) (*User, error)
+	UpdateUser(ctx context.Context, u *User) error
 
-	FindRoleByName(name string) (*Role, error)
-	FindRoleByID(id uuid.UUID) (*Role, error)
+	FindRoleByName(ctx context.Context, name string) (*Role, error)
+	FindRoleByID(ctx context.Context, id uuid.UUID) (*Role, error)
 
-	CreateRefreshToken(t *RefreshToken) error
-	FindRefreshTokenByHash(hash string) (*RefreshToken, error)
-	UpdateRefreshToken(t *RefreshToken) error
+	CreateRefreshToken(ctx context.Context, t *RefreshToken) error
+	FindRefreshTokenByHash(ctx context.Context, hash string) (*RefreshToken, error)
+	UpdateRefreshToken(ctx context.Context, t *RefreshToken) error
 
-	CreateActivityLog(entry ActivityLogEntry) error
+	CreateActivityLog(ctx context.Context, entry ActivityLogEntry) error
 }
 
 // Service orchestrates authentication flows.
@@ -76,12 +77,12 @@ type AuthResult struct {
 }
 
 // Profile returns a user with its role name resolved.
-func (s *Service) Profile(userID uuid.UUID) (*User, string, error) {
-	user, err := s.repo.FindUserByID(userID)
+func (s *Service) Profile(ctx context.Context, userID uuid.UUID) (*User, string, error) {
+	user, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return nil, "", err
 	}
-	role, err := s.RoleName(userID)
+	role, err := s.RoleName(ctx, userID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -89,13 +90,13 @@ func (s *Service) Profile(userID uuid.UUID) (*User, string, error) {
 }
 
 // Register creates a STAFF user with a bcrypt-hashed password.
-func (s *Service) Register(req RegisterRequest) (*User, error) {
+func (s *Service) Register(ctx context.Context, req RegisterRequest) (*User, error) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if email == "" || req.Name == "" || req.Password == "" {
 		return nil, sharederr.ErrValidation
 	}
 
-	existing, err := s.repo.FindUserByEmail(email)
+	existing, err := s.repo.FindUserByEmail(ctx, email)
 	if err != nil && !errors.Is(err, sharederr.ErrNotFound) {
 		return nil, fmt.Errorf("find user by email: %w", err)
 	}
@@ -108,7 +109,7 @@ func (s *Service) Register(req RegisterRequest) (*User, error) {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 
-	role, err := s.repo.FindRoleByName("STAFF")
+	role, err := s.repo.FindRoleByName(ctx, "STAFF")
 	if err != nil {
 		return nil, fmt.Errorf("find STAFF role: %w", err)
 	}
@@ -120,15 +121,15 @@ func (s *Service) Register(req RegisterRequest) (*User, error) {
 		RoleID:       role.ID,
 		IsActive:     true,
 	}
-	if err := s.repo.CreateUser(user); err != nil {
+	if err := s.repo.CreateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 	return user, nil
 }
 
 // Login verifies credentials and issues an access + refresh token pair.
-func (s *Service) Login(email, password string) (*AuthResult, error) {
-	user, err := s.repo.FindUserByEmail(strings.ToLower(strings.TrimSpace(email)))
+func (s *Service) Login(ctx context.Context, email, password string) (*AuthResult, error) {
+	user, err := s.repo.FindUserByEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
 	if err != nil {
 		if errors.Is(err, sharederr.ErrNotFound) {
 			return nil, sharederr.ErrUnauthorized
@@ -142,11 +143,11 @@ func (s *Service) Login(email, password string) (*AuthResult, error) {
 		return nil, sharederr.ErrUnauthorized
 	}
 
-	res, err := s.issueTokens(user)
+	res, err := s.issueTokens(ctx, user)
 	if err != nil {
 		return nil, err
 	}
-	s.logActivity(user.ID, "LOGIN", "user")
+	s.logActivity(ctx, user.ID, "LOGIN", "user")
 	return res, nil
 }
 
@@ -159,13 +160,13 @@ const DemoEmail = "demo@inventory.local"
 // password: access is granted purely by the endpoint being reachable
 // (guarded externally by DEMO_MODE). The demo password hash is a fresh
 // random bcrypt value so the account has no known credential.
-func (s *Service) DemoLogin() (*AuthResult, error) {
-	user, err := s.repo.FindUserByEmail(DemoEmail)
+func (s *Service) DemoLogin(ctx context.Context) (*AuthResult, error) {
+	user, err := s.repo.FindUserByEmail(ctx, DemoEmail)
 	switch {
 	case err == nil && user != nil:
 		// existing demo user: issue tokens directly
 	case errors.Is(err, sharederr.ErrNotFound):
-		role, rerr := s.repo.FindRoleByName("STAFF")
+		role, rerr := s.repo.FindRoleByName(ctx, "STAFF")
 		if rerr != nil {
 			return nil, fmt.Errorf("find STAFF role: %w", rerr)
 		}
@@ -180,18 +181,18 @@ func (s *Service) DemoLogin() (*AuthResult, error) {
 			RoleID:       role.ID,
 			IsActive:     true,
 		}
-		if cerr := s.repo.CreateUser(user); cerr != nil {
+		if cerr := s.repo.CreateUser(ctx, user); cerr != nil {
 			return nil, fmt.Errorf("create demo user: %w", cerr)
 		}
 	default:
 		return nil, fmt.Errorf("find demo user: %w", err)
 	}
 
-	res, err := s.issueTokens(user)
+	res, err := s.issueTokens(ctx, user)
 	if err != nil {
 		return nil, err
 	}
-	s.logActivity(user.ID, "LOGIN", "user")
+	s.logActivity(ctx, user.ID, "LOGIN", "user")
 	return res, nil
 }
 
@@ -205,9 +206,9 @@ func randomPasswordHash(cost int) (string, error) {
 	}
 	return string(hash), nil
 }
-func (s *Service) Refresh(rawToken string) (*AuthResult, error) {
+func (s *Service) Refresh(ctx context.Context, rawToken string) (*AuthResult, error) {
 	hash := s.tokens.HashRefreshToken(rawToken)
-	rt, err := s.repo.FindRefreshTokenByHash(hash)
+	rt, err := s.repo.FindRefreshTokenByHash(ctx, hash)
 	if err != nil {
 		if errors.Is(err, sharederr.ErrNotFound) {
 			return nil, sharederr.ErrUnauthorized
@@ -221,7 +222,7 @@ func (s *Service) Refresh(rawToken string) (*AuthResult, error) {
 		return nil, sharederr.ErrUnauthorized
 	}
 
-	user, err := s.repo.FindUserByID(rt.UserID)
+	user, err := s.repo.FindUserByID(ctx, rt.UserID)
 	if err != nil {
 		if errors.Is(err, sharederr.ErrNotFound) {
 			return nil, sharederr.ErrUnauthorized
@@ -234,21 +235,21 @@ func (s *Service) Refresh(rawToken string) (*AuthResult, error) {
 
 	now := time.Now()
 	rt.RevokedAt = &now
-	if err := s.repo.UpdateRefreshToken(rt); err != nil {
+	if err := s.repo.UpdateRefreshToken(ctx, rt); err != nil {
 		return nil, fmt.Errorf("revoke old refresh token: %w", err)
 	}
-	res, err := s.issueTokens(user)
+	res, err := s.issueTokens(ctx, user)
 	if err != nil {
 		return nil, err
 	}
-	s.logActivity(user.ID, "REFRESH", "user")
+	s.logActivity(ctx, user.ID, "REFRESH", "user")
 	return res, nil
 }
 
 // Logout revokes the presented refresh token (idempotent).
-func (s *Service) Logout(rawToken string) error {
+func (s *Service) Logout(ctx context.Context, rawToken string) error {
 	hash := s.tokens.HashRefreshToken(rawToken)
-	rt, err := s.repo.FindRefreshTokenByHash(hash)
+	rt, err := s.repo.FindRefreshTokenByHash(ctx, hash)
 	if err != nil {
 		if errors.Is(err, sharederr.ErrNotFound) {
 			return nil
@@ -257,16 +258,16 @@ func (s *Service) Logout(rawToken string) error {
 	}
 	now := time.Now()
 	rt.RevokedAt = &now
-	if err := s.repo.UpdateRefreshToken(rt); err != nil {
+	if err := s.repo.UpdateRefreshToken(ctx, rt); err != nil {
 		return fmt.Errorf("revoke refresh token: %w", err)
 	}
-	s.logActivity(rt.UserID, "LOGOUT", "user")
+	s.logActivity(ctx, rt.UserID, "LOGOUT", "user")
 	return nil
 }
 
 // ChangePassword verifies the old password and sets the new one.
-func (s *Service) ChangePassword(userID uuid.UUID, oldPassword, newPassword string) error {
-	user, err := s.repo.FindUserByID(userID)
+func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error {
+	user, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -278,21 +279,21 @@ func (s *Service) ChangePassword(userID uuid.UUID, oldPassword, newPassword stri
 		return fmt.Errorf("hash new password: %w", err)
 	}
 	user.PasswordHash = string(hash)
-	if err := s.repo.UpdateUser(user); err != nil {
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
-	s.logActivity(userID, "CHANGE_PASSWORD", "user")
+	s.logActivity(ctx, userID, "CHANGE_PASSWORD", "user")
 	return nil
 }
 
 // UpdateProfile updates a user's name/email (email uniqueness checked).
-func (s *Service) UpdateProfile(userID uuid.UUID, name, email string) (*User, error) {
-	user, err := s.repo.FindUserByID(userID)
+func (s *Service) UpdateProfile(ctx context.Context, userID uuid.UUID, name, email string) (*User, error) {
+	user, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if email != "" && email != user.Email {
-		other, err := s.repo.FindUserByEmail(email)
+		other, err := s.repo.FindUserByEmail(ctx, email)
 		if err == nil && other != nil && other.ID != userID {
 			return nil, ErrEmailTaken
 		}
@@ -304,28 +305,28 @@ func (s *Service) UpdateProfile(userID uuid.UUID, name, email string) (*User, er
 	if name != "" {
 		user.Name = name
 	}
-	if err := s.repo.UpdateUser(user); err != nil {
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("update profile: %w", err)
 	}
-	s.logActivity(userID, "UPDATE_PROFILE", "user")
+	s.logActivity(ctx, userID, "UPDATE_PROFILE", "user")
 	return user, nil
 }
 
 // RoleName returns the role name for a user.
-func (s *Service) RoleName(userID uuid.UUID) (string, error) {
-	user, err := s.repo.FindUserByID(userID)
+func (s *Service) RoleName(ctx context.Context, userID uuid.UUID) (string, error) {
+	user, err := s.repo.FindUserByID(ctx, userID)
 	if err != nil {
 		return "", err
 	}
-	role, err := s.repo.FindRoleByID(user.RoleID)
+	role, err := s.repo.FindRoleByID(ctx, user.RoleID)
 	if err != nil {
 		return "", err
 	}
 	return role.Name, nil
 }
 
-func (s *Service) issueTokens(user *User) (*AuthResult, error) {
-	role, err := s.repo.FindRoleByID(user.RoleID)
+func (s *Service) issueTokens(ctx context.Context, user *User) (*AuthResult, error) {
+	role, err := s.repo.FindRoleByID(ctx, user.RoleID)
 	if err != nil {
 		return nil, fmt.Errorf("find role: %w", err)
 	}
@@ -342,7 +343,7 @@ func (s *Service) issueTokens(user *User) (*AuthResult, error) {
 		TokenHash: hash,
 		ExpiresAt: expiresAt,
 	}
-	if err := s.repo.CreateRefreshToken(rt); err != nil {
+	if err := s.repo.CreateRefreshToken(ctx, rt); err != nil {
 		return nil, fmt.Errorf("persist refresh token: %w", err)
 	}
 	return &AuthResult{
@@ -354,11 +355,11 @@ func (s *Service) issueTokens(user *User) (*AuthResult, error) {
 	}, nil
 }
 
-func (s *Service) logActivity(userID uuid.UUID, action, entityType string) {
+func (s *Service) logActivity(ctx context.Context, userID uuid.UUID, action, entityType string) {
 	entry := ActivityLogEntry{
 		UserID:     &userID,
 		Action:     action,
 		EntityType: entityType,
 	}
-	_ = s.repo.CreateActivityLog(entry)
+	_ = s.repo.CreateActivityLog(ctx, entry)
 }

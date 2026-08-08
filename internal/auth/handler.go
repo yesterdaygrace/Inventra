@@ -93,12 +93,12 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := h.svc.Register(RegisterRequest(req))
+	user, err := h.svc.Register(c.Request.Context(), RegisterRequest(req))
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	role, _ := h.svc.RoleName(user.ID)
+	role, _ := h.svc.RoleName(c.Request.Context(), user.ID)
 	h.record(c, "REGISTER", user.ID.String(), &user.ID, gin.H{"email": user.Email, "name": user.Name})
 	response.Created(c, userResponse(user, role))
 }
@@ -124,7 +124,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	res, err := h.svc.Login(req.Email, req.Password)
+	res, err := h.svc.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -145,7 +145,7 @@ func (h *Handler) Login(c *gin.Context) {
 // @Failure 404 {object} response.Body "demo mode disabled"
 // @Router /auth/demo [post]
 func (h *Handler) DemoLogin(c *gin.Context) {
-	res, err := h.svc.DemoLogin()
+	res, err := h.svc.DemoLogin(c.Request.Context())
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -177,7 +177,7 @@ func (h *Handler) Refresh(c *gin.Context) {
 		return
 	}
 
-	res, err := h.svc.Refresh(req.RefreshToken)
+	res, err := h.svc.Refresh(c.Request.Context(), req.RefreshToken)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -206,7 +206,7 @@ func (h *Handler) Logout(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.Logout(req.RefreshToken); err != nil {
+	if err := h.svc.Logout(c.Request.Context(), req.RefreshToken); err != nil {
 		response.Error(c, err)
 		return
 	}
@@ -241,7 +241,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
+	if err := h.svc.ChangePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
 		response.Error(c, err)
 		return
 	}
@@ -277,12 +277,12 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	user, err := h.svc.UpdateProfile(userID, req.Name, req.Email)
+	user, err := h.svc.UpdateProfile(c.Request.Context(), userID, req.Name, req.Email)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	role, _ := h.svc.RoleName(user.ID)
+	role, _ := h.svc.RoleName(c.Request.Context(), user.ID)
 	h.record(c, "UPDATE_PROFILE", user.ID.String(), &userID, gin.H{"name": user.Name, "email": user.Email})
 	response.OK(c, userResponse(user, role))
 }
@@ -302,7 +302,7 @@ func (h *Handler) Me(c *gin.Context) {
 		response.Error(c, errors.ErrUnauthorized)
 		return
 	}
-	user, role, err := h.svc.Profile(userID)
+	user, role, err := h.svc.Profile(c.Request.Context(), userID)
 	if err != nil {
 		response.Error(c, err)
 		return

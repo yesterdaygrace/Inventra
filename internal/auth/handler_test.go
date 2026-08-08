@@ -77,16 +77,16 @@ func TestRegisterLoginMeRoundtrip(t *testing.T) {
 		PasswordHash: hashedPassword("password123"), RoleID: staffRoleID, IsActive: true,
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", "ada@example.com").Return(nil, sharederr.ErrNotFound).Once()
-	repo.On("FindUserByEmail", "ada@example.com").Return(loginUser, nil).Once()
-	repo.On("FindRoleByName", "STAFF").Return(staffRole, nil)
-	repo.On("CreateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
-		args.Get(0).(*User).ID = uid
+	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(nil, sharederr.ErrNotFound).Once()
+	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(loginUser, nil).Once()
+	repo.On("FindRoleByName", mock.Anything, "STAFF").Return(staffRole, nil)
+	repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		args.Get(1).(*User).ID = uid
 	})
-	repo.On("FindUserByID", uid).Return(user, nil)
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	r, _, _ := setupAuthEngine(repo)
 
@@ -181,12 +181,12 @@ func TestHandler_RefreshRoundtrip(t *testing.T) {
 	rt := &RefreshToken{ID: uuid.New(), UserID: uid, TokenHash: hash, ExpiresAt: expires}
 
 	repo := &mockRepo{}
-	repo.On("FindRefreshTokenByHash", hash).Return(rt, nil)
-	repo.On("FindUserByID", uid).Return(user, nil)
-	repo.On("UpdateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindRefreshTokenByHash", mock.Anything, hash).Return(rt, nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("UpdateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	r := setupAuthEngineWith(tm, repo)
 	w := doJSON(t, r, "POST", "/api/v1/auth/refresh", `{"refresh_token":"refreshtokraw"}`, "")
@@ -204,7 +204,7 @@ func TestHandler_RefreshRejectsUnknownToken(t *testing.T) {
 	tm := newTestManager()
 	hash := tm.HashRefreshToken("unknownraw")
 	repo := &mockRepo{}
-	repo.On("FindRefreshTokenByHash", hash).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRefreshTokenByHash", mock.Anything, hash).Return(nil, sharederr.ErrNotFound)
 	r, _, _ := setupAuthEngine(repo)
 	w := doJSON(t, r, "POST", "/api/v1/auth/refresh", `{"refresh_token":"unknownraw"}`, "")
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -218,9 +218,9 @@ func TestHandler_LogoutRevokesToken(t *testing.T) {
 	rt := &RefreshToken{ID: uuid.New(), UserID: uid, TokenHash: hash, ExpiresAt: time.Now().Add(time.Hour)}
 
 	repo := &mockRepo{}
-	repo.On("FindRefreshTokenByHash", hash).Return(rt, nil)
-	repo.On("UpdateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindRefreshTokenByHash", mock.Anything, hash).Return(rt, nil)
+	repo.On("UpdateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	r := setupAuthEngineWith(tm, repo)
 	token := accessTokenFor(t, tm, uid, "STAFF")
@@ -234,7 +234,7 @@ func TestHandler_LogoutIdempotentWhenTokenUnknown(t *testing.T) {
 	tm := newTestManager()
 	hash := tm.HashRefreshToken("missingraw")
 	repo := &mockRepo{}
-	repo.On("FindRefreshTokenByHash", hash).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRefreshTokenByHash", mock.Anything, hash).Return(nil, sharederr.ErrNotFound)
 
 	r, _, tm := setupAuthEngine(repo)
 	token := accessTokenFor(t, tm, uuid.New(), "STAFF")
@@ -252,9 +252,9 @@ func TestHandler_ChangePassword(t *testing.T) {
 	}
 
 	repo := &mockRepo{}
-	repo.On("FindUserByID", uid).Return(user, nil)
-	repo.On("UpdateUser", mock.AnythingOfType("*auth.User")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*auth.User")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	r, _, tm := setupAuthEngine(repo)
 	token := accessTokenFor(t, tm, uid, "STAFF")
@@ -272,7 +272,7 @@ func TestHandler_ChangePasswordWrongOld(t *testing.T) {
 		PasswordHash: hashedPassword("oldpass123"), RoleID: staffRoleID, IsActive: true,
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByID", uid).Return(user, nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
 
 	r, _, tm := setupAuthEngine(repo)
 	token := accessTokenFor(t, tm, uid, "STAFF")
@@ -287,13 +287,13 @@ func TestHandler_UpdateProfile(t *testing.T) {
 	updated := &User{ID: uid, Name: "Ada Lovelace", Email: "ada@profile.test", RoleID: staffRoleID, IsActive: true}
 
 	repo := &mockRepo{}
-	repo.On("FindUserByID", uid).Return(user, nil)
-	repo.On("FindUserByEmail", "new@profile.test").Return(nil, sharederr.ErrNotFound)
-	repo.On("UpdateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
-		*args.Get(0).(*User) = *updated
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("FindUserByEmail", mock.Anything, "new@profile.test").Return(nil, sharederr.ErrNotFound)
+	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		*args.Get(1).(*User) = *updated
 	})
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	r, _, tm := setupAuthEngine(repo)
 	token := accessTokenFor(t, tm, uid, "STAFF")
@@ -326,7 +326,7 @@ func TestHandler_UpdateProfileValidationError(t *testing.T) {
 func TestHandler_MeWhenUserMissing(t *testing.T) {
 	uid := uuid.New()
 	repo := &mockRepo{}
-	repo.On("FindUserByID", uid).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindUserByID", mock.Anything, uid).Return(nil, sharederr.ErrNotFound)
 	r, _, tm := setupAuthEngine(repo)
 	token := accessTokenFor(t, tm, uid, "STAFF")
 	w := doJSON(t, r, "GET", "/api/v1/auth/me", "", token)
@@ -339,7 +339,7 @@ func TestHandler_LoginInactiveUser(t *testing.T) {
 		PasswordHash: hashedPassword("password123"), RoleID: staffRoleID, IsActive: false,
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", "inactive@login.test").Return(inactive, nil)
+	repo.On("FindUserByEmail", mock.Anything, "inactive@login.test").Return(inactive, nil)
 	r, _, _ := setupAuthEngine(repo)
 	w := doJSON(t, r, "POST", "/api/v1/auth/login",
 		`{"email":"inactive@login.test","password":"password123"}`, "")
@@ -352,7 +352,7 @@ func TestHandler_LoginWrongPassword(t *testing.T) {
 		PasswordHash: hashedPassword("rightpass"), RoleID: staffRoleID, IsActive: true,
 	}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", "ada@wp.test").Return(user, nil)
+	repo.On("FindUserByEmail", mock.Anything, "ada@wp.test").Return(user, nil)
 	r, _, _ := setupAuthEngine(repo)
 	w := doJSON(t, r, "POST", "/api/v1/auth/login",
 		`{"email":"ada@wp.test","password":"wrongpass"}`, "")
@@ -383,8 +383,8 @@ func (s *spyRecorder) Record(audit.Entry) { s.called = true }
 
 func TestHandler_RegisterRoleLookupError(t *testing.T) {
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", mock.Anything).Return(nil, sharederr.ErrNotFound)
-	repo.On("FindRoleByName", "STAFF").Return(nil, sharederr.ErrNotFound)
+	repo.On("FindUserByEmail", mock.Anything, mock.Anything).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", mock.Anything, "STAFF").Return(nil, sharederr.ErrNotFound)
 	r, _, _ := setupAuthEngine(repo)
 	w := doJSON(t, r, "POST", "/api/v1/auth/register",
 		`{"name":"Ada","email":"ada@rl.test","password":"password123"}`, "")
@@ -394,14 +394,14 @@ func TestHandler_RegisterRoleLookupError(t *testing.T) {
 func TestHandler_DemoLoginEnabled(t *testing.T) {
 	uid := uuid.New()
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", DemoEmail).Return(nil, sharederr.ErrNotFound)
-	repo.On("FindRoleByName", "STAFF").Return(staffRole, nil)
-	repo.On("CreateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
-		args.Get(0).(*User).ID = uid
+	repo.On("FindUserByEmail", mock.Anything, DemoEmail).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", mock.Anything, "STAFF").Return(staffRole, nil)
+	repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		args.Get(1).(*User).ID = uid
 	})
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	r, _, _ := setupAuthEngineMode(repo, true)
 	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")
@@ -418,10 +418,10 @@ func TestHandler_DemoLoginReusesExisting(t *testing.T) {
 	uid := uuid.New()
 	existing := &User{ID: uid, Email: DemoEmail, Name: "Demo User", RoleID: staffRoleID, IsActive: true}
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", DemoEmail).Return(existing, nil)
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
+	repo.On("FindUserByEmail", mock.Anything, DemoEmail).Return(existing, nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	r, _, _ := setupAuthEngineMode(repo, true)
 	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")
@@ -441,15 +441,15 @@ func TestHandler_DemoLoginDisabledReturnsNotFound(t *testing.T) {
 func TestHandler_DemoTokenAuthorizesProtectedRoute(t *testing.T) {
 	uid := uuid.New()
 	repo := &mockRepo{}
-	repo.On("FindUserByEmail", DemoEmail).Return(nil, sharederr.ErrNotFound)
-	repo.On("FindRoleByName", "STAFF").Return(staffRole, nil)
-	repo.On("CreateUser", mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
-		args.Get(0).(*User).ID = uid
+	repo.On("FindUserByEmail", mock.Anything, DemoEmail).Return(nil, sharederr.ErrNotFound)
+	repo.On("FindRoleByName", mock.Anything, "STAFF").Return(staffRole, nil)
+	repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*auth.User")).Return(nil).Run(func(args mock.Arguments) {
+		args.Get(1).(*User).ID = uid
 	})
-	repo.On("FindRoleByID", staffRoleID).Return(staffRole, nil)
-	repo.On("CreateRefreshToken", mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
-	repo.On("CreateActivityLog", mock.Anything).Return(nil)
-	repo.On("FindUserByID", uid).Return(&User{ID: uid, Email: DemoEmail, RoleID: staffRoleID, IsActive: true}, nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(&User{ID: uid, Email: DemoEmail, RoleID: staffRoleID, IsActive: true}, nil)
 
 	r, _, _ := setupAuthEngineMode(repo, true)
 	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")

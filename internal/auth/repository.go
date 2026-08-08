@@ -2,6 +2,8 @@
 package auth
 
 import (
+	"context"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
@@ -19,8 +21,8 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 	return &GORMRepository{db: db}
 }
 
-func (r *GORMRepository) CreateUser(u *User) error {
-	if err := r.db.Create(u).Error; err != nil {
+func (r *GORMRepository) CreateUser(ctx context.Context, u *User) error {
+	if err := r.db.WithContext(ctx).Create(u).Error; err != nil {
 		if dbutil.IsUniqueViolation(err) {
 			return ErrEmailTaken
 		}
@@ -29,9 +31,9 @@ func (r *GORMRepository) CreateUser(u *User) error {
 	return nil
 }
 
-func (r *GORMRepository) FindUserByEmail(email string) (*User, error) {
+func (r *GORMRepository) FindUserByEmail(ctx context.Context, email string) (*User, error) {
 	var u User
-	if err := r.db.Where("email = ?", email).First(&u).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&u).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -40,9 +42,9 @@ func (r *GORMRepository) FindUserByEmail(email string) (*User, error) {
 	return &u, nil
 }
 
-func (r *GORMRepository) FindUserByID(id uuid.UUID) (*User, error) {
+func (r *GORMRepository) FindUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	var u User
-	if err := r.db.Where("id = ?", id).First(&u).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&u).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -51,13 +53,13 @@ func (r *GORMRepository) FindUserByID(id uuid.UUID) (*User, error) {
 	return &u, nil
 }
 
-func (r *GORMRepository) UpdateUser(u *User) error {
-	return r.db.Save(u).Error
+func (r *GORMRepository) UpdateUser(ctx context.Context, u *User) error {
+	return r.db.WithContext(ctx).Save(u).Error
 }
 
-func (r *GORMRepository) FindRoleByName(name string) (*Role, error) {
+func (r *GORMRepository) FindRoleByName(ctx context.Context, name string) (*Role, error) {
 	var role Role
-	if err := r.db.Where("name = ?", name).First(&role).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("name = ?", name).First(&role).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -66,9 +68,9 @@ func (r *GORMRepository) FindRoleByName(name string) (*Role, error) {
 	return &role, nil
 }
 
-func (r *GORMRepository) FindRoleByID(id uuid.UUID) (*Role, error) {
+func (r *GORMRepository) FindRoleByID(ctx context.Context, id uuid.UUID) (*Role, error) {
 	var role Role
-	if err := r.db.Where("id = ?", id).First(&role).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&role).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -77,13 +79,13 @@ func (r *GORMRepository) FindRoleByID(id uuid.UUID) (*Role, error) {
 	return &role, nil
 }
 
-func (r *GORMRepository) CreateRefreshToken(t *RefreshToken) error {
-	return r.db.Create(t).Error
+func (r *GORMRepository) CreateRefreshToken(ctx context.Context, t *RefreshToken) error {
+	return r.db.WithContext(ctx).Create(t).Error
 }
 
-func (r *GORMRepository) FindRefreshTokenByHash(hash string) (*RefreshToken, error) {
+func (r *GORMRepository) FindRefreshTokenByHash(ctx context.Context, hash string) (*RefreshToken, error) {
 	var t RefreshToken
-	if err := r.db.Where("token_hash = ?", hash).First(&t).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("token_hash = ?", hash).First(&t).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
@@ -92,8 +94,8 @@ func (r *GORMRepository) FindRefreshTokenByHash(hash string) (*RefreshToken, err
 	return &t, nil
 }
 
-func (r *GORMRepository) UpdateRefreshToken(t *RefreshToken) error {
-	return r.db.Save(t).Error
+func (r *GORMRepository) UpdateRefreshToken(ctx context.Context, t *RefreshToken) error {
+	return r.db.WithContext(ctx).Save(t).Error
 }
 
 // activityLogRow mirrors the activity_logs table columns needed by auth.
@@ -107,7 +109,7 @@ type activityLogRow struct {
 
 func (activityLogRow) TableName() string { return "activity_logs" }
 
-func (r *GORMRepository) CreateActivityLog(entry ActivityLogEntry) error {
+func (r *GORMRepository) CreateActivityLog(ctx context.Context, entry ActivityLogEntry) error {
 	row := activityLogRow(entry)
-	return r.db.Create(&row).Error
+	return r.db.WithContext(ctx).Create(&row).Error
 }

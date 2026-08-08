@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -41,12 +42,12 @@ func TestGORMRepository_CreateUser(t *testing.T) {
 	require.NoError(t, db.Create(&role).Error)
 
 	u := &User{Name: "Ada", Email: "ada@create.test", PasswordHash: "hash", RoleID: role.ID}
-	require.NoError(t, repo.CreateUser(u))
+	require.NoError(t, repo.CreateUser(context.Background(), u))
 	assert.NotEqual(t, uuid.Nil, u.ID)
 
 	// duplicate email -> ErrEmailTaken
 	dup := &User{Name: "Ada2", Email: "ada@create.test", PasswordHash: "hash", RoleID: role.ID}
-	err := repo.CreateUser(dup)
+	err := repo.CreateUser(context.Background(), dup)
 	assert.ErrorIs(t, err, ErrEmailTaken)
 }
 
@@ -60,12 +61,12 @@ func TestGORMRepository_FindUserByEmail(t *testing.T) {
 
 	_, user := seedRoleUser(t, db, "STAFF")
 
-	got, err := repo.FindUserByEmail(user.Email)
+	got, err := repo.FindUserByEmail(context.Background(), user.Email)
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, got.ID)
 	assert.Equal(t, user.Email, got.Email)
 
-	_, err = repo.FindUserByEmail("missing@repo.test")
+	_, err = repo.FindUserByEmail(context.Background(), "missing@repo.test")
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 }
 
@@ -79,11 +80,11 @@ func TestGORMRepository_FindUserByID(t *testing.T) {
 
 	_, user := seedRoleUser(t, db, "STAFF")
 
-	got, err := repo.FindUserByID(user.ID)
+	got, err := repo.FindUserByID(context.Background(), user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, user.Name, got.Name)
 
-	_, err = repo.FindUserByID(uuid.New())
+	_, err = repo.FindUserByID(context.Background(), uuid.New())
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 }
 
@@ -97,9 +98,9 @@ func TestGORMRepository_UpdateUser(t *testing.T) {
 
 	_, user := seedRoleUser(t, db, "STAFF")
 	user.Name = "Renamed"
-	require.NoError(t, repo.UpdateUser(&user))
+	require.NoError(t, repo.UpdateUser(context.Background(), &user))
 
-	got, err := repo.FindUserByID(user.ID)
+	got, err := repo.FindUserByID(context.Background(), user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Renamed", got.Name)
 }
@@ -114,11 +115,11 @@ func TestGORMRepository_FindRoleByName(t *testing.T) {
 
 	role, _ := seedRoleUser(t, db, "ADMIN")
 
-	got, err := repo.FindRoleByName("ADMIN")
+	got, err := repo.FindRoleByName(context.Background(), "ADMIN")
 	require.NoError(t, err)
 	assert.Equal(t, role.ID, got.ID)
 
-	_, err = repo.FindRoleByName("NOPE")
+	_, err = repo.FindRoleByName(context.Background(), "NOPE")
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 }
 
@@ -132,11 +133,11 @@ func TestGORMRepository_FindRoleByID(t *testing.T) {
 
 	role, _ := seedRoleUser(t, db, "STAFF")
 
-	got, err := repo.FindRoleByID(role.ID)
+	got, err := repo.FindRoleByID(context.Background(), role.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "STAFF", got.Name)
 
-	_, err = repo.FindRoleByID(uuid.New())
+	_, err = repo.FindRoleByID(context.Background(), uuid.New())
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 }
 
@@ -151,20 +152,20 @@ func TestGORMRepository_RefreshTokenCRUD(t *testing.T) {
 	_, user := seedRoleUser(t, db, "STAFF")
 
 	tok := &RefreshToken{UserID: user.ID, TokenHash: "hash-a", ExpiresAt: time.Now().Add(time.Hour)}
-	require.NoError(t, repo.CreateRefreshToken(tok))
+	require.NoError(t, repo.CreateRefreshToken(context.Background(), tok))
 
-	got, err := repo.FindRefreshTokenByHash("hash-a")
+	got, err := repo.FindRefreshTokenByHash(context.Background(), "hash-a")
 	require.NoError(t, err)
 	assert.Equal(t, user.ID, got.UserID)
 
-	_, err = repo.FindRefreshTokenByHash("nope")
+	_, err = repo.FindRefreshTokenByHash(context.Background(), "nope")
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
 
 	now := time.Now()
 	got.RevokedAt = &now
-	require.NoError(t, repo.UpdateRefreshToken(got))
+	require.NoError(t, repo.UpdateRefreshToken(context.Background(), got))
 
-	again, err := repo.FindRefreshTokenByHash("hash-a")
+	again, err := repo.FindRefreshTokenByHash(context.Background(), "hash-a")
 	require.NoError(t, err)
 	require.NotNil(t, again.RevokedAt)
 }
@@ -178,7 +179,7 @@ func TestGORMRepository_CreateActivityLog(t *testing.T) {
 	repo := NewGORMRepository(db)
 
 	uid := uuid.New()
-	err := repo.CreateActivityLog(ActivityLogEntry{
+	err := repo.CreateActivityLog(context.Background(), ActivityLogEntry{
 		UserID:     &uid,
 		Action:     "LOGIN",
 		EntityType: "user",
