@@ -59,7 +59,7 @@ func decode(t *testing.T, w *httptest.ResponseRecorder) map[string]any {
 func TestInventoryListPublic(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("List", mock.MatchedBy(func(q ListQuery) bool { return q.LowStock == false })).
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool { return q.LowStock == false })).
 		Return([]*InventoryView{{ProductID: pid, ProductSKU: "W1", ProductName: "Widget", Quantity: 5}}, int64(1), nil)
 
 	r := setupEngine(m, fakeParser{role: "STAFF"})
@@ -83,7 +83,7 @@ func TestInventoryListInvalidProductID(t *testing.T) {
 
 func TestInventoryListLowStockFilter(t *testing.T) {
 	m := new(mockRepo)
-	m.On("List", mock.MatchedBy(func(q ListQuery) bool { return q.LowStock })).
+	m.On("List", mock.Anything, mock.MatchedBy(func(q ListQuery) bool { return q.LowStock })).
 		Return([]*InventoryView{}, int64(0), nil)
 
 	r := setupEngine(m, nil)
@@ -94,7 +94,7 @@ func TestInventoryListLowStockFilter(t *testing.T) {
 func TestInventoryStockInOK(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("StockIn", mock.MatchedBy(func(mv Movement) bool {
+	m.On("StockIn", mock.Anything, mock.MatchedBy(func(mv Movement) bool {
 		return mv.ProductID == pid && mv.Type == "IN" && mv.Quantity == 10
 	})).Return(&Inventory{ProductID: pid, Quantity: 10}, nil)
 
@@ -127,7 +127,7 @@ func TestInventoryStockInUnauthenticated(t *testing.T) {
 func TestInventoryStockInStaffAllowed(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("StockIn", mock.Anything).Return(&Inventory{ProductID: pid, Quantity: 3}, nil)
+	m.On("StockIn", mock.Anything, mock.Anything).Return(&Inventory{ProductID: pid, Quantity: 3}, nil)
 
 	r := setupEngine(m, fakeParser{role: "STAFF"})
 	body := `{"product_id":"` + pid.String() + `","quantity":3}`
@@ -138,7 +138,7 @@ func TestInventoryStockInStaffAllowed(t *testing.T) {
 func TestInventoryStockOutOverdrawConflict(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("StockOut", mock.MatchedBy(func(mv Movement) bool {
+	m.On("StockOut", mock.Anything, mock.MatchedBy(func(mv Movement) bool {
 		return mv.ProductID == pid && mv.Type == "OUT"
 	})).Return(nil, sharederr.ErrConflict)
 
@@ -152,7 +152,7 @@ func TestInventoryTransactionsList(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
 	tid := uuid.New()
-	m.On("Transactions", mock.Anything).Return([]*TransactionView{{
+	m.On("Transactions", mock.Anything, mock.Anything).Return([]*TransactionView{{
 		ID: tid, ProductID: pid, ProductSKU: "W1", ProductName: "Widget", Type: "IN", Quantity: 5,
 	}}, int64(1), nil)
 
@@ -166,7 +166,7 @@ func TestInventoryTransactionsList(t *testing.T) {
 
 func TestInventoryTransactionsInvalidType(t *testing.T) {
 	m := new(mockRepo)
-	m.On("Transactions", mock.Anything).Return(nil, int64(0), sharederr.ErrValidation)
+	m.On("Transactions", mock.Anything, mock.Anything).Return(nil, int64(0), sharederr.ErrValidation)
 
 	r := setupEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/inventory/transactions?type=SIDE", "", "")
@@ -176,7 +176,7 @@ func TestInventoryTransactionsInvalidType(t *testing.T) {
 func TestInventoryExportCSV(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("List", mock.Anything).Return([]*InventoryView{{ProductID: pid, ProductSKU: "W1", ProductName: "Widget", Quantity: 5}}, int64(1), nil)
+	m.On("List", mock.Anything, mock.Anything).Return([]*InventoryView{{ProductID: pid, ProductSKU: "W1", ProductName: "Widget", Quantity: 5}}, int64(1), nil)
 
 	r := setupEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/inventory/export", "", "")

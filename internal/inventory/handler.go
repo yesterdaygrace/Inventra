@@ -148,7 +148,7 @@ func (h *Handler) List(c *gin.Context) {
 		q.ProductID = id
 	}
 
-	views, total, err := h.svc.List(q)
+	views, total, err := h.svc.List(c.Request.Context(), q)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -230,7 +230,7 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 	var inv *Inventory
 	var err error
 	if kind == "IN" {
-		inv, err = h.svc.StockIn(Movement{
+		inv, err = h.svc.StockIn(c.Request.Context(), Movement{
 			ProductID: pid,
 			Type:      "IN",
 			Quantity:  req.Quantity,
@@ -239,7 +239,7 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 			UserID:    &uid,
 		})
 	} else {
-		inv, err = h.svc.StockOut(Movement{
+		inv, err = h.svc.StockOut(c.Request.Context(), Movement{
 			ProductID: pid,
 			Type:      "OUT",
 			Quantity:  req.Quantity,
@@ -307,7 +307,7 @@ func (h *Handler) Transactions(c *gin.Context) {
 		q.ProductID = id
 	}
 
-	views, total, err := h.svc.Transactions(q)
+	views, total, err := h.svc.Transactions(c.Request.Context(), q)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -347,7 +347,7 @@ func (h *Handler) Transactions(c *gin.Context) {
 // @Failure 401 {object} response.Body
 // @Router /inventory/export [get]
 func (h *Handler) Export(c *gin.Context) {
-	views, _, err := h.svc.List(ListQuery{PerPage: 1000})
+	views, _, err := h.svc.List(c.Request.Context(), ListQuery{PerPage: 1000})
 	if err != nil {
 		response.Error(c, err)
 		return

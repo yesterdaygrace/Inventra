@@ -2,6 +2,7 @@
 package inventory
 
 import (
+	"context"
 	"strings"
 
 	"github.com/google/uuid"
@@ -25,9 +26,9 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 // StockIn records an IN movement and increments the product quantity in a
 // single DB transaction. The inventory row is upserted and projects with no
 // existing row start from zero, so the first IN creates it.
-func (r *GORMRepository) StockIn(m Movement) (*Inventory, error) {
+func (r *GORMRepository) StockIn(ctx context.Context, m Movement) (*Inventory, error) {
 	var result Inventory
-	err := r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var inv Inventory
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("product_id = ?", m.ProductID).First(&inv).Error
@@ -68,9 +69,9 @@ func (r *GORMRepository) StockIn(m Movement) (*Inventory, error) {
 // StockOut records an OUT movement and decrements the product quantity in a
 // single transaction. It rejects any draw that would push stock below zero,
 // returning ErrConflict and rolling back so no partial history row remains.
-func (r *GORMRepository) StockOut(m Movement) (*Inventory, error) {
+func (r *GORMRepository) StockOut(ctx context.Context, m Movement) (*Inventory, error) {
 	var result Inventory
-	err := r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var inv Inventory
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("product_id = ?", m.ProductID).First(&inv).Error
@@ -111,8 +112,8 @@ func (r *GORMRepository) StockOut(m Movement) (*Inventory, error) {
 // List returns a filtered, sorted, paginated joined inventory view (every
 // product left-joined with its stock row) plus the total match count. All
 // dynamic values are parameterized, so input cannot be injected.
-func (r *GORMRepository) List(q ListQuery) ([]*InventoryView, int64, error) {
-	db := r.db.Table("products").
+func (r *GORMRepository) List(ctx context.Context, q ListQuery) ([]*InventoryView, int64, error) {
+	db := r.db.WithContext(ctx).Table("products").
 		Select("products.id AS product_id, products.sku AS product_sku, products.name AS product_name, COALESCE(inventory.quantity, 0) AS quantity, COALESCE(inventory.updated_at, products.created_at) AS updated_at").
 		Joins("LEFT JOIN inventory ON inventory.product_id = products.id")
 
@@ -146,8 +147,8 @@ func (r *GORMRepository) List(q ListQuery) ([]*InventoryView, int64, error) {
 // Transactions returns a filtered, paginated history of stock movements joined
 // with product identity. Filters are parameterized and the type value is
 // validated before reaching the query builder.
-func (r *GORMRepository) Transactions(q TransactionQuery) ([]*TransactionView, int64, error) {
-	db := r.db.Table("inventory_transactions AS t").
+func (r *GORMRepository) Transactions(ctx context.Context, q TransactionQuery) ([]*TransactionView, int64, error) {
+	db := r.db.WithContext(ctx).Table("inventory_transactions AS t").
 		Select("t.id, t.product_id, p.sku AS product_sku, p.name AS product_name, t.type, t.quantity, t.unit_cost, t.note, t.user_id, t.created_at").
 		Joins("JOIN products p ON p.id = t.product_id")
 

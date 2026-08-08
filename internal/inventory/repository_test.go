@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -40,7 +41,7 @@ func TestStockInCreatesRowAndHistory(t *testing.T) {
 	}
 	db, repo, p := setupForRepo(t)
 
-	inv, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 15})
+	inv, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 15})
 	require.NoError(t, err)
 	assert.Equal(t, 15, inv.Quantity)
 	assert.Equal(t, int64(1), countTx(t, db, p.ID))
@@ -52,11 +53,11 @@ func TestStockInThenStockOutNetsCorrectQty(t *testing.T) {
 	}
 	db, repo, p := setupForRepo(t)
 
-	inv1, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 20})
+	inv1, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 20})
 	require.NoError(t, err)
 	assert.Equal(t, 20, inv1.Quantity)
 
-	inv2, err := repo.StockOut(Movement{ProductID: p.ID, Type: "OUT", Quantity: 6})
+	inv2, err := repo.StockOut(context.Background(), Movement{ProductID: p.ID, Type: "OUT", Quantity: 6})
 	require.NoError(t, err)
 	assert.Equal(t, 14, inv2.Quantity)
 
@@ -72,10 +73,10 @@ func TestStockOutOverdrawRollsBack(t *testing.T) {
 		t.Skip("skipping DB test in short mode")
 	}
 	db, repo, p := setupForRepo(t)
-	_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 5})
+	_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 5})
 	require.NoError(t, err)
 
-	_, err = repo.StockOut(Movement{ProductID: p.ID, Type: "OUT", Quantity: 100})
+	_, err = repo.StockOut(context.Background(), Movement{ProductID: p.ID, Type: "OUT", Quantity: 100})
 	assert.ErrorIs(t, err, sharederr.ErrConflict)
 
 	var qty int64
@@ -92,7 +93,7 @@ func TestStockInDeletedProductNotFound(t *testing.T) {
 	_, repo, p := setupForRepo(t)
 
 	require.NoError(t, repo.db.Delete(&product.Product{}, p.ID).Error)
-	_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 1})
+	_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 1})
 	assert.ErrorIs(t, err, sharederr.ErrNotFound, "stock-in on deleted product -> not found, not 500")
 }
 
@@ -102,7 +103,7 @@ func TestStockOutNoRowConflict(t *testing.T) {
 	}
 	_, repo, p := setupForRepo(t)
 
-	_, err := repo.StockOut(Movement{ProductID: p.ID, Type: "OUT", Quantity: 1})
+	_, err := repo.StockOut(context.Background(), Movement{ProductID: p.ID, Type: "OUT", Quantity: 1})
 	assert.ErrorIs(t, err, sharederr.ErrConflict)
 }
 
@@ -112,7 +113,7 @@ func TestStockInHistoryHasTypeAndQty(t *testing.T) {
 	}
 	db, repo, p := setupForRepo(t)
 
-	_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 7})
+	_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 7})
 	require.NoError(t, err)
 
 	var row InventoryTransaction
@@ -127,7 +128,7 @@ func TestListReturnsProductsWithZeroStock(t *testing.T) {
 	}
 	_, repo, _ := setupForRepo(t)
 
-	views, total, err := repo.List(ListQuery{})
+	views, total, err := repo.List(context.Background(), ListQuery{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, views, 1)
@@ -141,10 +142,10 @@ func TestListReflectsStockedQuantity(t *testing.T) {
 		t.Skip("skipping DB test in short mode")
 	}
 	_, repo, p := setupForRepo(t)
-	_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 25})
+	_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 25})
 	require.NoError(t, err)
 
-	views, total, err := repo.List(ListQuery{})
+	views, total, err := repo.List(context.Background(), ListQuery{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Equal(t, 25, views[0].Quantity)
@@ -156,19 +157,19 @@ func TestListFiltersByProductAndSearch(t *testing.T) {
 	}
 	_, repo, p := setupForRepo(t)
 
-	byID, _, err := repo.List(ListQuery{ProductID: p.ID})
+	byID, _, err := repo.List(context.Background(), ListQuery{ProductID: p.ID})
 	require.NoError(t, err)
 	assert.Len(t, byID, 1)
 
-	other, _, err := repo.List(ListQuery{ProductID: uuid.New()})
+	other, _, err := repo.List(context.Background(), ListQuery{ProductID: uuid.New()})
 	require.NoError(t, err)
 	assert.Empty(t, other)
 
-	bySearch, _, err := repo.List(ListQuery{Search: "wid"})
+	bySearch, _, err := repo.List(context.Background(), ListQuery{Search: "wid"})
 	require.NoError(t, err)
 	assert.Len(t, bySearch, 1)
 
-	noHit, _, err := repo.List(ListQuery{Search: "zzz-nomatch"})
+	noHit, _, err := repo.List(context.Background(), ListQuery{Search: "zzz-nomatch"})
 	require.NoError(t, err)
 	assert.Empty(t, noHit)
 }
@@ -178,10 +179,10 @@ func TestListLowStockFilterMatchesThreshold(t *testing.T) {
 		t.Skip("skipping DB test in short mode")
 	}
 	_, repo, p := setupForRepo(t)
-	_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 3})
+	_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 3})
 	require.NoError(t, err)
 
-	views, total, err := repo.List(ListQuery{LowStock: true})
+	views, total, err := repo.List(context.Background(), ListQuery{LowStock: true})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Equal(t, 3, views[0].Quantity)
@@ -201,7 +202,7 @@ func TestListPagination(t *testing.T) {
 	}
 	repo := NewGORMRepository(db)
 
-	page1, total, err := repo.List(ListQuery{Page: 1, PerPage: 2})
+	page1, total, err := repo.List(context.Background(), ListQuery{Page: 1, PerPage: 2})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
 	assert.Len(t, page1, 2)
@@ -212,12 +213,12 @@ func TestTransactionsReturnsJoinedHistory(t *testing.T) {
 		t.Skip("skipping DB test in short mode")
 	}
 	_, repo, p := setupForRepo(t)
-	_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 10, UserID: &p.ID})
+	_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 10, UserID: &p.ID})
 	require.NoError(t, err)
-	_, err = repo.StockOut(Movement{ProductID: p.ID, Type: "OUT", Quantity: 4, UserID: &p.ID})
+	_, err = repo.StockOut(context.Background(), Movement{ProductID: p.ID, Type: "OUT", Quantity: 4, UserID: &p.ID})
 	require.NoError(t, err)
 
-	views, total, err := repo.Transactions(TransactionQuery{})
+	views, total, err := repo.Transactions(context.Background(), TransactionQuery{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total)
 	require.Len(t, views, 2)
@@ -231,21 +232,21 @@ func TestTransactionsFilterByTypeAndProduct(t *testing.T) {
 		t.Skip("skipping DB test in short mode")
 	}
 	_, repo, p := setupForRepo(t)
-	_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 10})
+	_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 10})
 	require.NoError(t, err)
-	_, err = repo.StockOut(Movement{ProductID: p.ID, Type: "OUT", Quantity: 4})
+	_, err = repo.StockOut(context.Background(), Movement{ProductID: p.ID, Type: "OUT", Quantity: 4})
 	require.NoError(t, err)
 
-	onlyOut, total, err := repo.Transactions(TransactionQuery{Type: "OUT"})
+	onlyOut, total, err := repo.Transactions(context.Background(), TransactionQuery{Type: "OUT"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Equal(t, "OUT", onlyOut[0].Type)
 
-	byProduct, _, err := repo.Transactions(TransactionQuery{ProductID: p.ID})
+	byProduct, _, err := repo.Transactions(context.Background(), TransactionQuery{ProductID: p.ID})
 	require.NoError(t, err)
 	assert.Len(t, byProduct, 2)
 
-	miss, total2, err := repo.Transactions(TransactionQuery{ProductID: uuid.New()})
+	miss, total2, err := repo.Transactions(context.Background(), TransactionQuery{ProductID: uuid.New()})
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), total2)
 	assert.Empty(t, miss)
@@ -257,7 +258,7 @@ func TestTransactionsRejectsInvalidType(t *testing.T) {
 	}
 	_, repo, _ := setupForRepo(t)
 
-	_, _, err := repo.Transactions(TransactionQuery{Type: "SIDE"})
+	_, _, err := repo.Transactions(context.Background(), TransactionQuery{Type: "SIDE"})
 	assert.ErrorIs(t, err, sharederr.ErrValidation)
 }
 
@@ -267,11 +268,11 @@ func TestTransactionsPagination(t *testing.T) {
 	}
 	_, repo, p := setupForRepo(t)
 	for i := 0; i < 3; i++ {
-		_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 1})
+		_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 1})
 		require.NoError(t, err)
 	}
 
-	page, total, err := repo.Transactions(TransactionQuery{Page: 1, PerPage: 2})
+	page, total, err := repo.Transactions(context.Background(), TransactionQuery{Page: 1, PerPage: 2})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
 	assert.Len(t, page, 2)
@@ -283,11 +284,11 @@ func TestTransactionsPaginationZeroPerPageClampsToDefault(t *testing.T) {
 	}
 	_, repo, p := setupForRepo(t)
 	for i := 0; i < 3; i++ {
-		_, err := repo.StockIn(Movement{ProductID: p.ID, Type: "IN", Quantity: 1})
+		_, err := repo.StockIn(context.Background(), Movement{ProductID: p.ID, Type: "IN", Quantity: 1})
 		require.NoError(t, err)
 	}
 
-	page, total, err := repo.Transactions(TransactionQuery{Page: 1, PerPage: 0})
+	page, total, err := repo.Transactions(context.Background(), TransactionQuery{Page: 1, PerPage: 0})
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
 	assert.Len(t, page, 3, "should default to per_page 20")

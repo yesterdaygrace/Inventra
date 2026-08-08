@@ -3,6 +3,8 @@
 package inventory
 
 import (
+	"context"
+
 	"github.com/google/uuid"
 
 	sharederr "inventory/internal/shared/errors"
@@ -61,10 +63,10 @@ type TransactionQuery struct {
 
 // Repository abstracts persistence for the inventory service.
 type Repository interface {
-	StockIn(m Movement) (*Inventory, error)
-	StockOut(m Movement) (*Inventory, error)
-	List(q ListQuery) ([]*InventoryView, int64, error)
-	Transactions(q TransactionQuery) ([]*TransactionView, int64, error)
+	StockIn(ctx context.Context, m Movement) (*Inventory, error)
+	StockOut(ctx context.Context, m Movement) (*Inventory, error)
+	List(ctx context.Context, q ListQuery) ([]*InventoryView, int64, error)
+	Transactions(ctx context.Context, q TransactionQuery) ([]*TransactionView, int64, error)
 }
 
 // Service orchestrates stock movements.
@@ -78,29 +80,29 @@ func NewService(repo Repository) *Service {
 }
 
 // StockIn increases stock for a product and records the movement atomically.
-func (s *Service) StockIn(m Movement) (*Inventory, error) {
+func (s *Service) StockIn(ctx context.Context, m Movement) (*Inventory, error) {
 	if err := validateMovement(m); err != nil {
 		return nil, err
 	}
-	return s.repo.StockIn(m)
+	return s.repo.StockIn(ctx, m)
 }
 
 // StockOut decreases stock for a product and records the movement atomically.
-func (s *Service) StockOut(m Movement) (*Inventory, error) {
+func (s *Service) StockOut(ctx context.Context, m Movement) (*Inventory, error) {
 	if err := validateMovement(m); err != nil {
 		return nil, err
 	}
-	return s.repo.StockOut(m)
+	return s.repo.StockOut(ctx, m)
 }
 
 // List returns a filtered, paginated joined inventory view plus the total.
-func (s *Service) List(q ListQuery) ([]*InventoryView, int64, error) {
-	return s.repo.List(q)
+func (s *Service) List(ctx context.Context, q ListQuery) ([]*InventoryView, int64, error) {
+	return s.repo.List(ctx, q)
 }
 
 // Transactions returns a filtered, paginated movement history plus the total.
-func (s *Service) Transactions(q TransactionQuery) ([]*TransactionView, int64, error) {
-	return s.repo.Transactions(q)
+func (s *Service) Transactions(ctx context.Context, q TransactionQuery) ([]*TransactionView, int64, error) {
+	return s.repo.Transactions(ctx, q)
 }
 
 func validateMovement(m Movement) error {
