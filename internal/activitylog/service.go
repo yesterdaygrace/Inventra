@@ -3,6 +3,7 @@
 package activitylog
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/google/uuid"
@@ -14,8 +15,8 @@ import (
 
 // Repository abstracts persistence for the activity log service.
 type Repository interface {
-	Create(l *ActivityLog) error
-	List(q Query) ([]*ActivityLog, int64, error)
+	Create(ctx context.Context, l *ActivityLog) error
+	List(ctx context.Context, q Query) ([]*ActivityLog, int64, error)
 }
 
 // Service records audit events and serves filtered reads.
@@ -52,14 +53,14 @@ func (s *Service) Record(e audit.Entry) {
 		Details:    details,
 		IP:         e.IP,
 	}
-	if err := s.repo.Create(l); err != nil {
+	if err := s.repo.Create(context.Background(), l); err != nil {
 		s.log.Warn("activitylog: record failed", zap.Error(err))
 	}
 }
 
 // List returns a filtered, paginated page of audit events plus the total.
-func (s *Service) List(q Query) ([]*ActivityLog, int64, error) {
-	return s.repo.List(q)
+func (s *Service) List(ctx context.Context, q Query) ([]*ActivityLog, int64, error) {
+	return s.repo.List(ctx, q)
 }
 
 // ParseUserID parses an optional user filter, returning the nil UUID when

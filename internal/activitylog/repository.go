@@ -2,6 +2,7 @@
 package activitylog
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -34,15 +35,15 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 }
 
 // Create persists a single audit event.
-func (r *GORMRepository) Create(l *ActivityLog) error {
-	return r.db.Create(l).Error
+func (r *GORMRepository) Create(ctx context.Context, l *ActivityLog) error {
+	return r.db.WithContext(ctx).Create(l).Error
 }
 
 // List returns a filtered, paginated page of audit events plus the total.
 // Events are ordered newest-first. Every dynamic value is bound as a
 // parameter so user input cannot be injected.
-func (r *GORMRepository) List(q Query) ([]*ActivityLog, int64, error) {
-	db := r.db.Model(&ActivityLog{}).Preload("User")
+func (r *GORMRepository) List(ctx context.Context, q Query) ([]*ActivityLog, int64, error) {
+	db := r.db.WithContext(ctx).Model(&ActivityLog{}).Preload("User")
 
 	if q.UserID != uuid.Nil {
 		db = db.Where("user_id = ?", q.UserID)

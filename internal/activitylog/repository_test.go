@@ -1,6 +1,7 @@
 package activitylog
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ func TestRepoCreatePersists(t *testing.T) {
 
 	eid := "prod-1"
 	ip := "9.9.9.9"
-	err := repo.Create(&ActivityLog{UserID: &uid, Action: "CREATE", EntityType: "product", EntityID: &eid, IP: &ip})
+	err := repo.Create(context.Background(), &ActivityLog{UserID: &uid, Action: "CREATE", EntityType: "product", EntityID: &eid, IP: &ip})
 	require.NoError(t, err)
 
 	var row ActivityLog
@@ -64,27 +65,27 @@ func TestListFiltersAndSortsNewest(t *testing.T) {
 	seedLog(t, db, uid, "UPDATE", "product", "A")
 	seedLog(t, db, uid, "DELETE", "category", "B")
 
-	prods, total, err := repo.List(Query{EntityType: "product"})
+	prods, total, err := repo.List(context.Background(), Query{EntityType: "product"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total)
 	require.Len(t, prods, 2)
 	assert.Equal(t, "UPDATE", prods[0].Action, "newest first")
 	assert.Equal(t, "CREATE", prods[1].Action)
 
-	creates, createsTotal, err := repo.List(Query{Action: "CREATE"})
+	creates, createsTotal, err := repo.List(context.Background(), Query{Action: "CREATE"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), createsTotal)
 	assert.Len(t, creates, 1)
 
-	byUser, _, err := repo.List(Query{UserID: uid})
+	byUser, _, err := repo.List(context.Background(), Query{UserID: uid})
 	require.NoError(t, err)
 	assert.Len(t, byUser, 3)
 
-	cats, _, err := repo.List(Query{EntityType: "category"})
+	cats, _, err := repo.List(context.Background(), Query{EntityType: "category"})
 	require.NoError(t, err)
 	assert.Len(t, cats, 1)
 
-	none, totalNone, err := repo.List(Query{EntityType: "nope"})
+	none, totalNone, err := repo.List(context.Background(), Query{EntityType: "nope"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), totalNone)
 	assert.Empty(t, none)
@@ -102,7 +103,7 @@ func TestRepoListEntityIDFilter(t *testing.T) {
 	seedLog(t, db, uid, "CREATE", "product", "needle")
 	seedLog(t, db, uid, "CREATE", "product", "other")
 
-	rows, total, err := repo.List(Query{EntityID: "needle"})
+	rows, total, err := repo.List(context.Background(), Query{EntityID: "needle"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, rows, 1)
@@ -122,13 +123,13 @@ func TestRepoListDateRange(t *testing.T) {
 
 	from := time.Now().Add(-time.Hour)
 	to := time.Now().Add(time.Hour)
-	rows, total, err := repo.List(Query{From: &from, To: &to})
+	rows, total, err := repo.List(context.Background(), Query{From: &from, To: &to})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Len(t, rows, 1)
 
 	past := time.Now().Add(-48 * time.Hour)
-	rows, total, err = repo.List(Query{To: &past})
+	rows, total, err = repo.List(context.Background(), Query{To: &past})
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), total)
 	assert.Empty(t, rows)
@@ -145,7 +146,7 @@ func TestRepoListPreloadsUser(t *testing.T) {
 
 	seedLog(t, db, uid, "CREATE", "product", "A")
 
-	rows, _, err := repo.List(Query{})
+	rows, _, err := repo.List(context.Background(), Query{})
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	require.NotNil(t, rows[0].User)
@@ -164,12 +165,12 @@ func TestRepoListPaginationAndDefaultClamp(t *testing.T) {
 		seedLog(t, db, uid, "CREATE", "product", uuid.NewString())
 	}
 
-	page, total, err := repo.List(Query{Page: 1, PerPage: 2})
+	page, total, err := repo.List(context.Background(), Query{Page: 1, PerPage: 2})
 	require.NoError(t, err)
 	assert.Equal(t, int64(4), total)
 	assert.Len(t, page, 2)
 
-	all, _, err := repo.List(Query{PerPage: 0})
+	all, _, err := repo.List(context.Background(), Query{PerPage: 0})
 	require.NoError(t, err)
 	assert.Len(t, all, 4, "per_page 0 clamps to default 20")
 }

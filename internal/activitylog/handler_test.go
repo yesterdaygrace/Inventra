@@ -78,7 +78,7 @@ func TestListAdminOK(t *testing.T) {
 	id := uuid.New()
 	details := datatypes.JSON([]byte(`{"name":"Widget"}`))
 	eid := "prod-1"
-	m.On("List", mock.MatchedBy(func(q Query) bool {
+	m.On("List", mock.Anything, mock.MatchedBy(func(q Query) bool {
 		return q.EntityType == "product"
 	})).Return([]*ActivityLog{{
 		ID: id, Action: "CREATE", EntityType: "product", EntityID: &eid, Details: &details, IP: &eid,

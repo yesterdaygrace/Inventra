@@ -124,7 +124,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 
-	logs, total, err := h.svc.List(Query{
+	logs, total, err := h.svc.List(c.Request.Context(), Query{
 		UserID:     uid,
 		EntityType: req.EntityType,
 		EntityID:   req.EntityID,
