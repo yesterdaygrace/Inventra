@@ -58,21 +58,35 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Category, error) {
 	return s.repo.Get(ctx, id)
 }
 
-// Update changes a category name/description/active flag.
-func (s *Service) Update(ctx context.Context, id uuid.UUID, name string, description *string, isActive *bool) (*Category, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
+// UpdateParams carries the subset of fields a caller wants to change on a
+// category. Nil pointers mean "leave unchanged"; non-nil values overwrite.
+type UpdateParams struct {
+	Name        *string
+	Description *string
+	IsActive    *bool
+}
+
+// Update changes a category, overwriting only the fields present in params.
+func (s *Service) Update(ctx context.Context, id uuid.UUID, params UpdateParams) (*Category, error) {
+	if params.Name != nil && strings.TrimSpace(*params.Name) == "" {
 		return nil, sharederr.ErrValidation
 	}
+
 	c, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	c.Name = name
-	c.Description = trimDescription(description)
-	if isActive != nil {
-		c.IsActive = *isActive
+
+	if params.Name != nil {
+		c.Name = strings.TrimSpace(*params.Name)
 	}
+	if params.Description != nil {
+		c.Description = trimDescription(params.Description)
+	}
+	if params.IsActive != nil {
+		c.IsActive = *params.IsActive
+	}
+
 	if err := s.repo.Update(ctx, c); err != nil {
 		return nil, err
 	}

@@ -146,6 +146,29 @@ func TestUpdateAdminOK(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestUpdateDescriptionOnlyPartial(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	m.On("Get", mock.Anything, id).Return(&Category{ID: id, Name: "Keep"}, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(c *Category) bool {
+		return c.Name == "Keep" && c.Description != nil && *c.Description == "new"
+	})).Return(nil)
+
+	r := setupCategoryEngine(m, fakeParser{role: "ADMIN"})
+	w := doReq(t, r, "PUT", "/api/v1/categories/"+id.String(), `{"description":"new"}`, "tok")
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestUpdateEmptyBodyRejected(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+
+	r := setupCategoryEngine(m, fakeParser{role: "ADMIN"})
+	w := doReq(t, r, "PUT", "/api/v1/categories/"+id.String(), `{}`, "tok")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	m.AssertNotCalled(t, "Get", mock.Anything)
+}
+
 func TestUpdateStaffForbidden(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()

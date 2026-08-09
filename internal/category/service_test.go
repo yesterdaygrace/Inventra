@@ -56,6 +56,9 @@ func (m *mockRepo) CountProductsFor(ctx context.Context, id uuid.UUID) (int64, e
 
 func newSvc(repo Repository) *Service { return NewService(repo) }
 
+func strPtr(s string) *string { return &s }
+func bPtr(b bool) *bool       { return &b }
+
 func TestCreateValidatesEmptyName(t *testing.T) {
 	m := new(mockRepo)
 	_, err := newSvc(m).Create(context.Background(), "   ", nil)
@@ -93,7 +96,7 @@ func TestGet(t *testing.T) {
 
 func TestUpdateValidatesEmptyName(t *testing.T) {
 	m := new(mockRepo)
-	_, err := newSvc(m).Update(context.Background(), uuid.New(), " ", nil, nil)
+	_, err := newSvc(m).Update(context.Background(), uuid.New(), UpdateParams{Name: strPtr(" ")})
 	assert.ErrorIs(t, err, sharederr.ErrValidation)
 	m.AssertNotCalled(t, "Get", mock.Anything)
 }
@@ -105,7 +108,7 @@ func TestUpdate(t *testing.T) {
 	m.On("Get", mock.Anything, id).Return(existing, nil)
 	m.On("Update", mock.Anything, mock.Anything).Return(nil)
 
-	got, err := newSvc(m).Update(context.Background(), id, "New", nil, nil)
+	got, err := newSvc(m).Update(context.Background(), id, UpdateParams{Name: strPtr("New")})
 	require.NoError(t, err)
 	assert.Equal(t, "New", got.Name)
 }
@@ -115,8 +118,52 @@ func TestUpdateNotFound(t *testing.T) {
 	id := uuid.New()
 	m.On("Get", mock.Anything, id).Return(nil, sharederr.ErrNotFound)
 
-	_, err := newSvc(m).Update(context.Background(), id, "New", nil, nil)
+	_, err := newSvc(m).Update(context.Background(), id, UpdateParams{Name: strPtr("New")})
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
+}
+
+func TestUpdateDescriptionOnlyKeepsName(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	existing := &Category{ID: id, Name: "Books", Description: strPtr("old desc")}
+	m.On("Get", mock.Anything, id).Return(existing, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(c *Category) bool {
+		return c.Name == "Books" && c.Description != nil && *c.Description == "new desc"
+	})).Return(nil)
+
+	got, err := newSvc(m).Update(context.Background(), id, UpdateParams{Description: strPtr("new desc")})
+	require.NoError(t, err)
+	assert.Equal(t, "Books", got.Name)
+	assert.Equal(t, "new desc", *got.Description)
+}
+
+func TestUpdateActiveOnlyKeepsName(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	existing := &Category{ID: id, Name: "Books", IsActive: true}
+	m.On("Get", mock.Anything, id).Return(existing, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(c *Category) bool {
+		return !c.IsActive && c.Name == "Books"
+	})).Return(nil)
+
+	got, err := newSvc(m).Update(context.Background(), id, UpdateParams{IsActive: bPtr(false)})
+	require.NoError(t, err)
+	assert.False(t, got.IsActive)
+	assert.Equal(t, "Books", got.Name)
+}
+
+func TestUpdateClearsDescriptionToNil(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	existing := &Category{ID: id, Name: "C", Description: strPtr("keep")}
+	m.On("Get", mock.Anything, id).Return(existing, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(c *Category) bool {
+		return c.Description == nil
+	})).Return(nil)
+
+	got, err := newSvc(m).Update(context.Background(), id, UpdateParams{Description: strPtr("")})
+	require.NoError(t, err)
+	assert.Nil(t, got.Description)
 }
 
 func TestDeleteRejectsInUse(t *testing.T) {

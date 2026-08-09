@@ -3,8 +3,6 @@
 package category
 
 import (
-	"strings"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
@@ -66,7 +64,7 @@ type createCategoryRequest struct {
 }
 
 type updateCategoryRequest struct {
-	Name        string  `json:"name"`
+	Name        *string `json:"name"`
 	Description *string `json:"description"`
 	IsActive    *bool   `json:"is_active"`
 }
@@ -228,12 +226,16 @@ func (h *Handler) Update(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	if strings.TrimSpace(req.Name) == "" && req.Description == nil && req.IsActive == nil {
+	if req.Name == nil && req.Description == nil && req.IsActive == nil {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
 
-	cat, err := h.svc.Update(c.Request.Context(), id, req.Name, req.Description, req.IsActive)
+	cat, err := h.svc.Update(c.Request.Context(), id, UpdateParams{
+		Name:        req.Name,
+		Description: req.Description,
+		IsActive:    req.IsActive,
+	})
 	if err != nil {
 		response.Error(c, err)
 		return
