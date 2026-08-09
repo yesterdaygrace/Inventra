@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"inventory/internal/shared/config"
 )
@@ -17,7 +18,7 @@ func init() {
 
 func TestHealthz(t *testing.T) {
 	cfg := &config.Config{}
-	r := New(cfg)
+	r := New(cfg, zap.NewNop())
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -37,7 +38,7 @@ func TestHealthz(t *testing.T) {
 
 func TestHealthzHasRequestID(t *testing.T) {
 	cfg := &config.Config{}
-	r := New(cfg)
+	r := New(cfg, zap.NewNop())
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
