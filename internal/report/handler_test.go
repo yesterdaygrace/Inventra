@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,12 +42,12 @@ func doReq(t *testing.T, r *gin.Engine, path string) *httptest.ResponseRecorder 
 
 func TestStockSummaryOK(t *testing.T) {
 	m := new(mockRepo)
-	m.On("StockSummary").Return(&StockSummary{
+	m.On("StockSummary", mock.Anything).Return(&StockSummary{
 		Categories: []*CategorySummary{{Name: "Books", ProductCount: 2, TotalQty: 10, TotalValue: 250}},
 		LowStock:   []*LowStockItem{},
 	}, nil)
-	m.On("CountProducts").Return(int64(2), nil)
-	m.On("InventoryValue").Return(250.0, nil)
+	m.On("CountProducts", mock.Anything).Return(int64(2), nil)
+	m.On("InventoryValue", mock.Anything).Return(250.0, nil)
 
 	w := doReq(t, setupEngine(m), "/api/v1/reports/stock-summary")
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -61,19 +62,19 @@ func TestStockSummaryOK(t *testing.T) {
 
 func TestStockSummaryServiceError(t *testing.T) {
 	m := new(mockRepo)
-	m.On("StockSummary").Return(nil, errBoom)
+	m.On("StockSummary", mock.Anything).Return(nil, errBoom)
 	w := doReq(t, setupEngine(m), "/api/v1/reports/stock-summary")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestExportOKStreamsCSV(t *testing.T) {
 	m := new(mockRepo)
-	m.On("StockSummary").Return(&StockSummary{
+	m.On("StockSummary", mock.Anything).Return(&StockSummary{
 		Categories: []*CategorySummary{{Name: "Books, Modern", ProductCount: 2, TotalQty: 10, TotalValue: 250.5}},
 		LowStock:   []*LowStockItem{},
 	}, nil)
-	m.On("CountProducts").Return(int64(2), nil)
-	m.On("InventoryValue").Return(250.50, nil)
+	m.On("CountProducts", mock.Anything).Return(int64(2), nil)
+	m.On("InventoryValue", mock.Anything).Return(250.50, nil)
 
 	w := doReq(t, setupEngine(m), "/api/v1/reports/export")
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -85,21 +86,21 @@ func TestExportOKStreamsCSV(t *testing.T) {
 
 func TestExportServiceError(t *testing.T) {
 	m := new(mockRepo)
-	m.On("StockSummary").Return(nil, errBoom)
+	m.On("StockSummary", mock.Anything).Return(nil, errBoom)
 	w := doReq(t, setupEngine(m), "/api/v1/reports/export")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestLowStockExportOK(t *testing.T) {
 	m := new(mockRepo)
-	m.On("StockSummary").Return(&StockSummary{
+	m.On("StockSummary", mock.Anything).Return(&StockSummary{
 		Categories: []*CategorySummary{},
 		LowStock: []*LowStockItem{
 			{ProductID: "pid-1", SKU: "SK", Name: "Widget", Category: "Tools", Quantity: 2, Threshold: 5, Value: 20},
 		},
 	}, nil)
-	m.On("CountProducts").Return(int64(1), nil)
-	m.On("InventoryValue").Return(20.0, nil)
+	m.On("CountProducts", mock.Anything).Return(int64(1), nil)
+	m.On("InventoryValue", mock.Anything).Return(20.0, nil)
 
 	w := doReq(t, setupEngine(m), "/api/v1/reports/export-low-stock")
 	assert.Equal(t, http.StatusOK, w.Code)

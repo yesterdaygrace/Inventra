@@ -38,7 +38,7 @@ func (h *Handler) SetLogger(l *zap.Logger) {
 // @Failure 401 {object} response.Body
 // @Router /reports/stock-summary [get]
 func (h *Handler) Summary(c *gin.Context) {
-	summary, err := h.svc.Summary()
+	summary, err := h.svc.Summary(c.Request.Context())
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -56,7 +56,7 @@ func (h *Handler) Summary(c *gin.Context) {
 // @Failure 401 {object} response.Body
 // @Router /reports/export [get]
 func (h *Handler) Export(c *gin.Context) {
-	headers, rows, err := h.svc.ExportRows()
+	headers, rows, err := h.svc.ExportRows(c.Request.Context())
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -78,7 +78,7 @@ func (h *Handler) Export(c *gin.Context) {
 // @Failure 401 {object} response.Body
 // @Router /reports/export-low-stock [get]
 func (h *Handler) LowStock(c *gin.Context) {
-	headers, rows, err := h.svc.LowStockRows()
+	headers, rows, err := h.svc.LowStockRows(c.Request.Context())
 	if err != nil {
 		response.Error(c, err)
 		return

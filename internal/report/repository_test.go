@@ -1,6 +1,7 @@
 package report
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
@@ -95,7 +96,7 @@ func TestRepoStockSummaryGroupsByCategory(t *testing.T) {
 	seedQuantity(t, db, tool.ID, 10)
 	seedQuantity(t, db, bookB.ID, 1)
 
-	sum, err := repo.StockSummary()
+	sum, err := repo.StockSummary(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sum.Categories, 2)
 
@@ -129,7 +130,7 @@ func TestRepoStockSummaryLowStockList(t *testing.T) {
 	seedQuantity(t, db, low.ID, 2)
 	seedQuantity(t, db, healthy.ID, 20)
 
-	sum, err := repo.StockSummary()
+	sum, err := repo.StockSummary(context.Background())
 	require.NoError(t, err)
 	require.Len(t, sum.LowStock, 1)
 	it := sum.LowStock[0]
@@ -148,7 +149,7 @@ func TestRepoStockSummaryEmptyState(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(testModels...))
 	repo := NewGORMRepository(db)
 
-	sum, err := repo.StockSummary()
+	sum, err := repo.StockSummary(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, sum.Categories)
 	require.NotNil(t, sum.LowStock)
@@ -169,17 +170,17 @@ func TestRepoCountProductsAndValue(t *testing.T) {
 	p2 := seedProduct(t, db, cat.ID, "Mouse", "MOU", 20, 5)
 	seedQuantity(t, db, p1.ID, 2)
 
-	count, err := repo.CountProducts()
+	count, err := repo.CountProducts(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), count)
 
-	value, err := repo.InventoryValue()
+	value, err := repo.InventoryValue(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 2*1000.0, value) // falls back to price when no IN cost exists
 
 	cost := 900.0
 	seedMovement(t, db, p1.ID, "IN", 2, &cost)
-	value, err = repo.InventoryValue()
+	value, err = repo.InventoryValue(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 2*900.0, value) // last IN cost overrides price
 	_ = p2

@@ -2,6 +2,8 @@
 package report
 
 import (
+	"context"
+
 	"gorm.io/gorm"
 )
 
@@ -17,9 +19,9 @@ func NewGORMRepository(db *gorm.DB) *GORMRepository {
 
 // StockSummary aggregates products per category with the same last-IN-cost
 // valuation used by the dashboard, plus the low-stock list.
-func (r *GORMRepository) StockSummary() (*StockSummary, error) {
+func (r *GORMRepository) StockSummary(ctx context.Context) (*StockSummary, error) {
 	var categories []*CategorySummary
-	err := r.db.Raw(`
+	err := r.db.WithContext(ctx).Raw(`
 		SELECT c.name AS name,
 			COUNT(p.id) AS product_count,
 			COALESCE(SUM(i.quantity), 0) AS total_qty,
@@ -40,7 +42,7 @@ func (r *GORMRepository) StockSummary() (*StockSummary, error) {
 		return nil, err
 	}
 
-	lowStock, err := r.lowStockItems()
+	lowStock, err := r.lowStockItems(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -55,17 +57,17 @@ func (r *GORMRepository) StockSummary() (*StockSummary, error) {
 }
 
 // CountProducts returns the number of non-archived products.
-func (r *GORMRepository) CountProducts() (int64, error) {
+func (r *GORMRepository) CountProducts(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.Table("products").Where("is_archived = ?", false).Count(&count).Error
+	err := r.db.WithContext(ctx).Table("products").Where("is_archived = ?", false).Count(&count).Error
 	return count, err
 }
 
 // InventoryValue sums quantity * cost of each product using the same
 // last-IN-cost-with-price-fallback valuation as the dashboard.
-func (r *GORMRepository) InventoryValue() (float64, error) {
+func (r *GORMRepository) InventoryValue(ctx context.Context) (float64, error) {
 	var value float64
-	err := r.db.Raw(`
+	err := r.db.WithContext(ctx).Raw(`
 		SELECT COALESCE(SUM(
 			COALESCE(i.quantity, 0) *
 			COALESCE((
@@ -82,9 +84,9 @@ func (r *GORMRepository) InventoryValue() (float64, error) {
 
 // lowStockItems lists non-archived products at or below their threshold
 // joined with their category name.
-func (r *GORMRepository) lowStockItems() ([]*LowStockItem, error) {
+func (r *GORMRepository) lowStockItems(ctx context.Context) ([]*LowStockItem, error) {
 	var items []*LowStockItem
-	err := r.db.Raw(`
+	err := r.db.WithContext(ctx).Raw(`
 		SELECT p.id AS product_id, p.sku, p.name, c.name AS category,
 			COALESCE(i.quantity, 0) AS quantity, p.low_stock_threshold,
 			COALESCE(i.quantity, 0) *

@@ -65,7 +65,7 @@ func (r *GORMRepository) List(ctx context.Context, q Query) ([]*User, int64, err
 // FindByID returns a user by primary key.
 func (r *GORMRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	var u User
-	if err := r.db.Preload("Role").Where("id = ?", id).First(&u).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("Role").Where("id = ?", id).First(&u).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, sharederr.ErrNotFound
 		}
