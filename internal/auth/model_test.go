@@ -39,13 +39,17 @@ func TestRoleUser_AutoMigrate(t *testing.T) {
 
 	// Verify roles table exists
 	var rolesExists bool
-	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'roles')").Scan(&rolesExists).Error
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
+		"WHERE table_schema = 'public' AND table_name = 'roles')").
+		Scan(&rolesExists).Error
 	require.NoError(t, err)
 	assert.True(t, rolesExists, "roles table should exist")
 
 	// Verify users table exists
 	var usersExists bool
-	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users')").Scan(&usersExists).Error
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
+		"WHERE table_schema = 'public' AND table_name = 'users')").
+		Scan(&usersExists).Error
 	require.NoError(t, err)
 	assert.True(t, usersExists, "users table should exist")
 

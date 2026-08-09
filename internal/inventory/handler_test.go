@@ -176,7 +176,12 @@ func TestInventoryTransactionsInvalidType(t *testing.T) {
 func TestInventoryExportCSV(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("List", mock.Anything, mock.Anything).Return([]*InventoryView{{ProductID: pid, ProductSKU: "W1", ProductName: "Widget", Quantity: 5}}, int64(1), nil)
+	m.On("List", mock.Anything, mock.Anything).Return(
+		[]*InventoryView{{
+			ProductID: pid, ProductSKU: "W1", ProductName: "Widget", Quantity: 5,
+		}},
+		int64(1), nil,
+	)
 
 	r := setupEngine(m, nil)
 	w := doReq(t, r, "GET", "/api/v1/inventory/export", "", "")

@@ -52,7 +52,9 @@ func TestProduct_AutoMigrate(t *testing.T) {
 
 	// Verify products table exists
 	var tableExists bool
-	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'products')").Scan(&tableExists).Error
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
+		"WHERE table_schema = 'public' AND table_name = 'products')").
+		Scan(&tableExists).Error
 	require.NoError(t, err)
 	assert.True(t, tableExists, "products table should exist")
 

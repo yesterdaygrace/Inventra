@@ -42,7 +42,10 @@ func TestRepoCreatePersists(t *testing.T) {
 
 	eid := "prod-1"
 	ip := "9.9.9.9"
-	err := repo.Create(context.Background(), &ActivityLog{UserID: &uid, Action: "CREATE", EntityType: "product", EntityID: &eid, IP: &ip})
+	err := repo.Create(context.Background(), &ActivityLog{
+		UserID: &uid, Action: "CREATE", EntityType: "product",
+		EntityID: &eid, IP: &ip,
+	})
 	require.NoError(t, err)
 
 	var row ActivityLog

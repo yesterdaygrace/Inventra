@@ -449,7 +449,10 @@ func TestHandler_DemoTokenAuthorizesProtectedRoute(t *testing.T) {
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
-	repo.On("FindUserByID", mock.Anything, uid).Return(&User{ID: uid, Email: DemoEmail, RoleID: staffRoleID, IsActive: true}, nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(
+		&User{ID: uid, Email: DemoEmail, RoleID: staffRoleID, IsActive: true},
+		nil,
+	)
 
 	r, _, _ := setupAuthEngineMode(repo, true)
 	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")

@@ -54,7 +54,10 @@ func seedCategory(t *testing.T, db *gorm.DB, name string) category.Category {
 	return cat
 }
 
-func seedProduct(t *testing.T, db *gorm.DB, catID uuid.UUID, name, sku string, price float64, threshold int) product.Product {
+func seedProduct(
+	t *testing.T, db *gorm.DB, catID uuid.UUID,
+	name, sku string, price float64, threshold int,
+) product.Product {
 	t.Helper()
 	p := product.Product{
 		Name:              name,
@@ -74,7 +77,9 @@ func seedQuantity(t *testing.T, db *gorm.DB, pid uuid.UUID, qty int) {
 
 func seedMovement(t *testing.T, db *gorm.DB, pid uuid.UUID, typ string, qty int, unitCost *float64) {
 	t.Helper()
-	require.NoError(t, db.Create(&inventory.InventoryTransaction{ProductID: pid, Type: typ, Quantity: qty, UnitCost: unitCost}).Error)
+	require.NoError(t, db.Create(&inventory.InventoryTransaction{
+		ProductID: pid, Type: typ, Quantity: qty, UnitCost: unitCost,
+	}).Error)
 }
 
 func TestRepoCountsAndValue(t *testing.T) {
@@ -91,15 +96,15 @@ func TestRepoCountsAndValue(t *testing.T) {
 	seedQuantity(t, db, laptop.ID, 2)
 	seedQuantity(t, db, mouse.ID, 1)
 
-	products, err := repo.CountProducts(context.Background(), )
+	products, err := repo.CountProducts(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), products)
 
-	categories, err := repo.CountCategories(context.Background(), )
+	categories, err := repo.CountCategories(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), categories)
 
-	value, err := repo.InventoryValue(context.Background(), )
+	value, err := repo.InventoryValue(context.Background())
 	require.NoError(t, err)
 	// No IN cost recorded yet: quantity * list price fallback.
 	assert.Equal(t, 2020.0, value)
@@ -119,7 +124,7 @@ func TestRepoInventoryValueUsesLastStockInCost(t *testing.T) {
 	unitCost := 50.0
 	seedMovement(t, db, p.ID, "IN", 10, &unitCost)
 
-	value, err := repo.InventoryValue(context.Background(), )
+	value, err := repo.InventoryValue(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 500.0, value)
 }
@@ -138,7 +143,7 @@ func TestRepoLowStockItems(t *testing.T) {
 	seedQuantity(t, db, low.ID, 3)
 	seedQuantity(t, db, high.ID, 20)
 
-	items, err := repo.LowStockItems(context.Background(), )
+	items, err := repo.LowStockItems(context.Background())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "Low Widget", items[0].Name)
@@ -160,7 +165,7 @@ func TestRepoStockHealth(t *testing.T) {
 	seedQuantity(t, db, healthy.ID, 50)
 	seedQuantity(t, db, low.ID, 3)
 
-	health, err := repo.StockHealth(context.Background(), )
+	health, err := repo.StockHealth(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), health.Healthy)
 	assert.Equal(t, int64(1), health.Low)
@@ -188,7 +193,7 @@ func TestRepoTopSellersAndDistribution(t *testing.T) {
 	assert.Equal(t, "Novel", sellers[0].Name)
 	assert.Equal(t, 7, sellers[0].UnitsSold)
 
-	dist, err := repo.CategoryDistribution(context.Background(), )
+	dist, err := repo.CategoryDistribution(context.Background())
 	require.NoError(t, err)
 	require.Len(t, dist, 2)
 	assert.Equal(t, "Books", dist[0].Name)
@@ -246,7 +251,7 @@ func TestRepoTotalQuantity(t *testing.T) {
 	seedQuantity(t, db, p1.ID, 3)
 	seedQuantity(t, db, p2.ID, 7)
 
-	total, err := repo.TotalQuantity(context.Background(), )
+	total, err := repo.TotalQuantity(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), total)
 }

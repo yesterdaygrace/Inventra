@@ -197,7 +197,11 @@ func TestListPagination(t *testing.T) {
 	cat := category.Category{Name: "Various"}
 	require.NoError(t, db.Create(&cat).Error)
 	for i := 0; i < 3; i++ {
-		p := product.Product{Name: "Prod " + string(rune('A'+i)), SKU: "SKU-" + string(rune('A'+i)), Price: 1, CategoryID: cat.ID}
+		p := product.Product{
+			Name:  "Prod " + string(rune('A'+i)),
+			SKU:   "SKU-" + string(rune('A'+i)),
+			Price: 1, CategoryID: cat.ID,
+		}
 		require.NoError(t, db.Create(&p).Error)
 	}
 	repo := NewGORMRepository(db)

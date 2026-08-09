@@ -114,7 +114,13 @@ func (r *GORMRepository) StockOut(ctx context.Context, m Movement) (*Inventory, 
 // dynamic values are parameterized, so input cannot be injected.
 func (r *GORMRepository) List(ctx context.Context, q ListQuery) ([]*InventoryView, int64, error) {
 	db := r.db.WithContext(ctx).Table("products").
-		Select("products.id AS product_id, products.sku AS product_sku, products.name AS product_name, COALESCE(inventory.quantity, 0) AS quantity, COALESCE(inventory.updated_at, products.created_at) AS updated_at").
+		Select(strings.Join([]string{
+			"products.id AS product_id",
+			"products.sku AS product_sku",
+			"products.name AS product_name",
+			"COALESCE(inventory.quantity, 0) AS quantity",
+			"COALESCE(inventory.updated_at, products.created_at) AS updated_at",
+		}, ", ")).
 		Joins("LEFT JOIN inventory ON inventory.product_id = products.id")
 
 	if q.ProductID != uuid.Nil {
@@ -149,7 +155,11 @@ func (r *GORMRepository) List(ctx context.Context, q ListQuery) ([]*InventoryVie
 // validated before reaching the query builder.
 func (r *GORMRepository) Transactions(ctx context.Context, q TransactionQuery) ([]*TransactionView, int64, error) {
 	db := r.db.WithContext(ctx).Table("inventory_transactions AS t").
-		Select("t.id, t.product_id, p.sku AS product_sku, p.name AS product_name, t.type, t.quantity, t.unit_cost, t.note, t.user_id, t.created_at").
+		Select(strings.Join([]string{
+			"t.id", "t.product_id", "p.sku AS product_sku",
+			"p.name AS product_name", "t.type", "t.quantity",
+			"t.unit_cost", "t.note", "t.user_id", "t.created_at",
+		}, ", ")).
 		Joins("JOIN products p ON p.id = t.product_id")
 
 	if q.ProductID != uuid.Nil {

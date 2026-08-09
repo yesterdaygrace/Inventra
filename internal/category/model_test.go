@@ -49,7 +49,9 @@ func TestCategory_AutoMigrate(t *testing.T) {
 
 	// Verify categories table exists
 	var tableExists bool
-	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'categories')").Scan(&tableExists).Error
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
+		"WHERE table_schema = 'public' AND table_name = 'categories')").
+		Scan(&tableExists).Error
 	require.NoError(t, err)
 	assert.True(t, tableExists, "categories table should exist")
 

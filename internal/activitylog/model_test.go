@@ -52,7 +52,9 @@ func TestActivityLog_AutoMigrate(t *testing.T) {
 
 	// Verify activity_logs table exists
 	var tableExists bool
-	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'activity_logs')").Scan(&tableExists).Error
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
+		"WHERE table_schema = 'public' AND table_name = 'activity_logs')").
+		Scan(&tableExists).Error
 	require.NoError(t, err)
 	assert.True(t, tableExists, "activity_logs table should exist")
 }

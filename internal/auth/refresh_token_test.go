@@ -43,7 +43,9 @@ func TestRefreshToken_AutoMigrate(t *testing.T) {
 
 	// Verify table exists
 	var tableExists bool
-	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'refresh_tokens')").Scan(&tableExists).Error
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
+		"WHERE table_schema = 'public' AND table_name = 'refresh_tokens')").
+		Scan(&tableExists).Error
 	require.NoError(t, err)
 	assert.True(t, tableExists, "refresh_tokens table should exist")
 

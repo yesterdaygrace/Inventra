@@ -196,5 +196,6 @@ func TestGORMRepository_CreateActivityLog(t *testing.T) {
 func TestIsUniqueViolation(t *testing.T) {
 	assert.False(t, dbutil.IsUniqueViolation(nil))
 	assert.False(t, dbutil.IsUniqueViolation(errors.New("boom")))
-	assert.True(t, dbutil.IsUniqueViolation(errors.New(`ERROR: duplicate key value violates unique constraint "users_email_key"`)))
+	err := errors.New(`ERROR: duplicate key value violates unique constraint "users_email_key"`)
+	assert.True(t, dbutil.IsUniqueViolation(err))
 }

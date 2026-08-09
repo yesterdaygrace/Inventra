@@ -103,8 +103,9 @@ func TestCreateAdminOK(t *testing.T) {
 	catID := uuid.New()
 	id := uuid.New()
 	m.On("SKUExists", mock.Anything, "W1", uuid.Nil).Return(false, nil)
-	m.On("Create", mock.Anything, mock.MatchedBy(func(p *Product) bool { return p.Name == "Widget" && p.CategoryID == catID })).
-		Return(nil).Run(func(args mock.Arguments) {
+	m.On("Create", mock.Anything, mock.MatchedBy(func(p *Product) bool {
+		return p.Name == "Widget" && p.CategoryID == catID
+	})).Return(nil).Run(func(args mock.Arguments) {
 		args.Get(1).(*Product).ID = id
 	})
 

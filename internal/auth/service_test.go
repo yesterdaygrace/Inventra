@@ -130,7 +130,9 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(existing, nil)
 
 	svc := newTestService(repo)
-	_, err := svc.Register(context.Background(), RegisterRequest{Name: "Ada", Email: "ada@example.com", Password: "password123"})
+	_, err := svc.Register(context.Background(), RegisterRequest{
+		Name: "Ada", Email: "ada@example.com", Password: "password123",
+	})
 
 	assert.ErrorIs(t, err, ErrEmailTaken)
 }

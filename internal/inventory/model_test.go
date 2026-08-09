@@ -55,13 +55,17 @@ func TestInventory_AutoMigrate(t *testing.T) {
 
 	// Verify inventory table exists
 	var invExists bool
-	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory')").Scan(&invExists).Error
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
+		"WHERE table_schema = 'public' AND table_name = 'inventory')").
+		Scan(&invExists).Error
 	require.NoError(t, err)
 	assert.True(t, invExists, "inventory table should exist")
 
 	// Verify inventory_transactions table exists
 	var txnExists bool
-	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_transactions')").Scan(&txnExists).Error
+	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
+		"WHERE table_schema = 'public' AND table_name = 'inventory_transactions')").
+		Scan(&txnExists).Error
 	require.NoError(t, err)
 	assert.True(t, txnExists, "inventory_transactions table should exist")
 

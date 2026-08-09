@@ -67,7 +67,10 @@ func (s *Service) UpdateName(ctx context.Context, id uuid.UUID, name string) (*U
 // admin. Empty fields are left unchanged. Email changes are guarded against
 // collisions with another account. Deactivation applies the same guards as
 // Deactivate (cannot deactivate self; cannot deactivate the last admin).
-func (s *Service) UpdateProfile(ctx context.Context, id, actorID uuid.UUID, name, email string, isActive *bool) (*User, error) {
+func (s *Service) UpdateProfile(
+	ctx context.Context, id, actorID uuid.UUID,
+	name, email string, isActive *bool,
+) (*User, error) {
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err

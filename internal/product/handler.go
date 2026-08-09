@@ -255,7 +255,10 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	p, err := h.svc.Create(c.Request.Context(), req.Name, req.SKU, req.Description, req.Price, catID, req.LowStockThreshold, req.IsArchived)
+	p, err := h.svc.Create(
+		c.Request.Context(), req.Name, req.SKU, req.Description,
+		req.Price, catID, req.LowStockThreshold, req.IsArchived,
+	)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -395,7 +398,11 @@ func (h *Handler) Export(c *gin.Context) {
 	}
 
 	export.SetAttachment(c, "products")
-	if err := export.WriteCSV(c.Writer, []string{"id", "name", "sku", "price", "category_name", "low_stock_threshold", "is_archived", "description", "created_at"}, rows); err != nil {
+	headers := []string{
+		"id", "name", "sku", "price", "category_name",
+		"low_stock_threshold", "is_archived", "description", "created_at",
+	}
+	if err := export.WriteCSV(c.Writer, headers, rows); err != nil {
 		return
 	}
 }

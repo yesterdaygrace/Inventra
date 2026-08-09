@@ -52,7 +52,10 @@ func seedCategory(t *testing.T, db *gorm.DB, name string) category.Category {
 	return cat
 }
 
-func seedProduct(t *testing.T, db *gorm.DB, catID uuid.UUID, name, sku string, price float64, threshold int) product.Product {
+func seedProduct(
+	t *testing.T, db *gorm.DB, catID uuid.UUID,
+	name, sku string, price float64, threshold int,
+) product.Product {
 	t.Helper()
 	p := product.Product{
 		Name:              name,
@@ -72,7 +75,9 @@ func seedQuantity(t *testing.T, db *gorm.DB, pid uuid.UUID, qty int) {
 
 func seedMovement(t *testing.T, db *gorm.DB, pid uuid.UUID, typ string, qty int, unitCost *float64) {
 	t.Helper()
-	require.NoError(t, db.Create(&inventory.InventoryTransaction{ProductID: pid, Type: typ, Quantity: qty, UnitCost: unitCost}).Error)
+	require.NoError(t, db.Create(&inventory.InventoryTransaction{
+		ProductID: pid, Type: typ, Quantity: qty, UnitCost: unitCost,
+	}).Error)
 }
 
 func TestRepoStockSummaryGroupsByCategory(t *testing.T) {

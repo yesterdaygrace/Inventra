@@ -145,7 +145,11 @@ func TestRepoListSortEdges(t *testing.T) {
 	mustProduct(t, db, &Product{Name: "B", SKU: "SKU-B", Price: 1, CategoryID: cat.ID})
 	mustProduct(t, db, &Product{Name: "A", SKU: "SKU-A", Price: 2, CategoryID: cat.ID})
 
-	for _, sort := range []string{"name", "-name", "price", "-price", "created_at", "-created_at", "sku", "-sku", "garbage"} {
+	sorts := []string{
+		"name", "-name", "price", "-price",
+		"created_at", "-created_at", "sku", "-sku", "garbage",
+	}
+	for _, sort := range sorts {
 		prods, _, err := repo.List(context.Background(), ListQuery{Sort: sort, Page: 1, PerPage: 10})
 		require.NoError(t, err, "sort %q", sort)
 		assert.NotEmpty(t, prods, "sort %q should return rows", sort)

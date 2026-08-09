@@ -16,12 +16,12 @@ import (
 )
 
 const (
-	maxRetries        = 5
-	retryInterval     = 2 * time.Second
-	maxOpenConns      = 25
-	maxIdleConns      = 10
-	connMaxLifetime   = 5 * time.Minute
-	connMaxIdleTime   = 3 * time.Minute
+	maxRetries      = 5
+	retryInterval   = 2 * time.Second
+	maxOpenConns    = 25
+	maxIdleConns    = 10
+	connMaxLifetime = 5 * time.Minute
+	connMaxIdleTime = 3 * time.Minute
 )
 
 // Connect opens a GORM connection to PostgreSQL. It retries with a

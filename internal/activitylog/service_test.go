@@ -87,7 +87,8 @@ func TestListDelegates(t *testing.T) {
 		return q.UserID == uid && q.EntityType == "product" && q.Page == 1 && q.PerPage == 10
 	})).Return(logs, int64(1), nil)
 
-	got, total, err := newSvc(m).List(context.Background(), Query{UserID: uid, EntityType: "product", Page: 1, PerPage: 10})
+	got, total, err := newSvc(m).List(context.Background(),
+		Query{UserID: uid, EntityType: "product", Page: 1, PerPage: 10})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, got, 1)

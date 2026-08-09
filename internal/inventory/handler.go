@@ -365,7 +365,8 @@ func (h *Handler) Export(c *gin.Context) {
 	}
 
 	export.SetAttachment(c, "inventory")
-	if err := export.WriteCSV(c.Writer, []string{"product_id", "sku", "name", "quantity", "updated_at"}, rows); err != nil {
+	headers := []string{"product_id", "sku", "name", "quantity", "updated_at"}
+	if err := export.WriteCSV(c.Writer, headers, rows); err != nil {
 		h.zlog.Warn("csv export failed", zap.Error(err))
 	}
 }

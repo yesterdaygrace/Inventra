@@ -157,7 +157,7 @@ func TestInventoryMovementCapsDays(t *testing.T) {
 	m.On("InventoryMovement", mock.Anything, mock.AnythingOfType("time.Time")).Return(nil, nil)
 	m.On("TotalQuantity", mock.Anything).Return(int64(1), nil)
 
-	payload, err := NewService(m).InventoryMovement(context.Background(), MaxMovementDays + 10)
+	payload, err := NewService(m).InventoryMovement(context.Background(), MaxMovementDays+10)
 	require.NoError(t, err)
 	assert.Len(t, payload.Labels, MaxMovementDays)
 }
@@ -169,7 +169,7 @@ func TestCategoryDistribution(t *testing.T) {
 		{Name: "Electronics", Count: 3},
 	}, nil)
 
-	payload, err := NewService(m).CategoryDistribution(context.Background(), )
+	payload, err := NewService(m).CategoryDistribution(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"Books", "Electronics"}, payload.Labels)
 	require.Len(t, payload.Datasets, 1)
