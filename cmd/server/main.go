@@ -3,8 +3,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -119,7 +125,28 @@ func main() {
 
 	addr := ":" + cfg.Port
 	zlog.Info("inventory api listening", zap.String("addr", addr))
-	if err := http.ListenAndServe(addr, r); err != nil {
-		zlog.Fatal("http server stopped", zap.Error(err))
+
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			zlog.Fatal("http server failed", zap.Error(err))
+		}
+	}()
+
+	<-ctx.Done()
+	zlog.Info("shutting down gracefully")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		zlog.Warn("http server shutdown error", zap.Error(err))
 	}
 }
