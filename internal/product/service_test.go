@@ -55,6 +55,11 @@ func (m *mockRepo) SKUExists(ctx context.Context, sku string, excludeID uuid.UUI
 
 func newSvc(repo Repository) *Service { return NewService(repo) }
 
+func strPtr(s string) *string { return &s }
+func fPtr(f float64) *float64 { return &f }
+func bPtr(b bool) *bool       { return &b }
+func iPtr(i int) *int         { return &i }
+
 func TestCreateValidatesEmptyFields(t *testing.T) {
 	m := new(mockRepo)
 	_, err := newSvc(m).Create(context.Background(), "  ", "SKU-1", nil, 10, uuid.New(), 5, false)
@@ -97,7 +102,9 @@ func TestUpdateDuplicateSKUExcludingSelf(t *testing.T) {
 	m.On("Get", mock.Anything, id).Return(&Product{ID: id, SKU: "OLD", Name: "Old"}, nil)
 	m.On("Update", mock.Anything, mock.Anything).Return(nil)
 
-	p, err := newSvc(m).Update(context.Background(), id, "New", "KEEP", nil, 10, uuid.New(), 5, false)
+	p, err := newSvc(m).Update(context.Background(), id, UpdateParams{
+		Name: strPtr("New"), SKU: strPtr("KEEP"), Price: fPtr(10),
+	})
 	require.NoError(t, err)
 	assert.Equal(t, "KEEP", p.SKU)
 }
@@ -107,7 +114,9 @@ func TestUpdateConflictWhenTakenByOther(t *testing.T) {
 	id := uuid.New()
 	m.On("SKUExists", mock.Anything, "TAKEN", id).Return(true, nil)
 
-	_, err := newSvc(m).Update(context.Background(), id, "New", "TAKEN", nil, 10, uuid.New(), 5, false)
+	_, err := newSvc(m).Update(context.Background(), id, UpdateParams{
+		Name: strPtr("New"), SKU: strPtr("TAKEN"),
+	})
 	assert.ErrorIs(t, err, sharederr.ErrConflict)
 }
 
@@ -117,8 +126,74 @@ func TestUpdateNotFound(t *testing.T) {
 	m.On("SKUExists", mock.Anything, "NEW", id).Return(false, nil)
 	m.On("Get", mock.Anything, id).Return(nil, sharederr.ErrNotFound)
 
-	_, err := newSvc(m).Update(context.Background(), id, "New", "NEW", nil, 10, uuid.New(), 5, false)
+	_, err := newSvc(m).Update(context.Background(), id, UpdateParams{
+		Name: strPtr("New"), SKU: strPtr("NEW"),
+	})
 	assert.ErrorIs(t, err, sharederr.ErrNotFound)
+}
+
+func TestUpdateValidatesBlankName(t *testing.T) {
+	m := new(mockRepo)
+	_, err := newSvc(m).Update(context.Background(), uuid.New(), UpdateParams{Name: strPtr("  ")})
+	assert.ErrorIs(t, err, sharederr.ErrValidation)
+	m.AssertNotCalled(t, "Get", mock.Anything)
+}
+
+func TestUpdateValidatesBlankSKU(t *testing.T) {
+	m := new(mockRepo)
+	_, err := newSvc(m).Update(context.Background(), uuid.New(), UpdateParams{SKU: strPtr(" ")})
+	assert.ErrorIs(t, err, sharederr.ErrValidation)
+	m.AssertNotCalled(t, "Get", mock.Anything)
+}
+
+func TestUpdateValidatesNegativePrice(t *testing.T) {
+	m := new(mockRepo)
+	_, err := newSvc(m).Update(context.Background(), uuid.New(), UpdateParams{Price: fPtr(-1)})
+	assert.ErrorIs(t, err, sharederr.ErrValidation)
+	m.AssertNotCalled(t, "Get", mock.Anything)
+}
+
+func TestUpdatePriceOnlyKeepsOtherFields(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	catID := uuid.New()
+	existing := &Product{ID: id, Name: "Old", SKU: "OLD", Price: 10, CategoryID: catID, IsArchived: false}
+	m.On("Get", mock.Anything, id).Return(existing, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(p *Product) bool {
+		return p.Price == 42.5 && p.Name == "Old" && p.SKU == "OLD" && p.CategoryID == catID
+	})).Return(nil)
+
+	got, err := newSvc(m).Update(context.Background(), id, UpdateParams{Price: fPtr(42.5)})
+	require.NoError(t, err)
+	assert.Equal(t, 42.5, got.Price)
+	assert.Equal(t, "Old", got.Name)
+}
+
+func TestUpdateArchivedTrueFromFalse(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	existing := &Product{ID: id, Name: "P", SKU: "S1", IsArchived: false}
+	m.On("Get", mock.Anything, id).Return(existing, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(p *Product) bool { return p.IsArchived })).Return(nil)
+
+	got, err := newSvc(m).Update(context.Background(), id, UpdateParams{IsArchived: bPtr(true)})
+	require.NoError(t, err)
+	assert.True(t, got.IsArchived)
+}
+
+func TestUpdateNoParamsLeavesProductUnchanged(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	existing := &Product{ID: id, Name: "P", SKU: "S1"}
+	m.On("Get", mock.Anything, id).Return(existing, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(p *Product) bool {
+		return p.Name == "P" && p.SKU == "S1"
+	})).Return(nil)
+
+	got, err := newSvc(m).Update(context.Background(), id, UpdateParams{})
+	require.NoError(t, err)
+	assert.Equal(t, "P", got.Name)
+	assert.Equal(t, "S1", got.SKU)
 }
 
 func TestDelete(t *testing.T) {

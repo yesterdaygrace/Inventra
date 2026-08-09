@@ -76,13 +76,13 @@ type createProductRequest struct {
 }
 
 type updateProductRequest struct {
-	Name              string  `json:"name"`
-	SKU               string  `json:"sku"`
-	Description       *string `json:"description"`
-	Price             float64 `json:"price"`
-	CategoryID        string  `json:"category_id"`
-	LowStockThreshold int     `json:"low_stock_threshold"`
-	IsArchived        bool    `json:"is_archived"`
+	Name              *string  `json:"name"`
+	SKU               *string  `json:"sku"`
+	Description       *string  `json:"description"`
+	Price             *float64 `json:"price"`
+	CategoryID        *string  `json:"category_id"`
+	LowStockThreshold *int     `json:"low_stock_threshold"`
+	IsArchived        *bool    `json:"is_archived"`
 }
 
 // productEnvelope is the JSON shape returned by the API. It includes the
@@ -291,13 +291,31 @@ func (h *Handler) Update(c *gin.Context) {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
-	catID, ok := parseCategoryID(req.CategoryID)
-	if !ok {
+	if req.Name == nil && req.SKU == nil && req.Description == nil && req.Price == nil &&
+		req.CategoryID == nil && req.LowStockThreshold == nil && req.IsArchived == nil {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
 
-	p, err := h.svc.Update(c.Request.Context(), id, req.Name, req.SKU, req.Description, req.Price, catID, req.LowStockThreshold, req.IsArchived)
+	var catID *uuid.UUID
+	if req.CategoryID != nil {
+		cid, ok := parseCategoryID(*req.CategoryID)
+		if !ok {
+			response.Error(c, sharederr.ErrValidation)
+			return
+		}
+		catID = &cid
+	}
+
+	p, err := h.svc.Update(c.Request.Context(), id, UpdateParams{
+		Name:              req.Name,
+		SKU:               req.SKU,
+		Description:       req.Description,
+		Price:             req.Price,
+		CategoryID:        catID,
+		LowStockThreshold: req.LowStockThreshold,
+		IsArchived:        req.IsArchived,
+	})
 	if err != nil {
 		response.Error(c, err)
 		return

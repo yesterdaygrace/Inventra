@@ -187,6 +187,51 @@ func TestHandlerUpdateNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
+func TestUpdatePriceOnlyPartial(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	catID := uuid.New()
+	m.On("Get", mock.Anything, id).Return(&Product{ID: id, Name: "Old", SKU: "OLD", CategoryID: catID, Price: 10}, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(p *Product) bool { return p.Price == 42.5 && p.Name == "Old" })).
+		Return(nil)
+
+	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
+	w := doReq(t, r, "PUT", "/api/v1/products/"+id.String(), `{"price":42.5}`, "tok")
+	assert.Equal(t, http.StatusOK, w.Code)
+	m.AssertNotCalled(t, "SKUExists", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUpdateEmptyBodyRejected(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+
+	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
+	w := doReq(t, r, "PUT", "/api/v1/products/"+id.String(), `{}`, "tok")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	m.AssertNotCalled(t, "Get", mock.Anything)
+}
+
+func TestUpdateInvalidCategoryRejected(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+
+	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
+	w := doReq(t, r, "PUT", "/api/v1/products/"+id.String(), `{"category_id":"not-a-uuid"}`, "tok")
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	m.AssertNotCalled(t, "Get", mock.Anything)
+}
+
+func TestUpdateRestoresArchivedProduct(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	m.On("Get", mock.Anything, id).Return(&Product{ID: id, Name: "P", SKU: "S1", IsArchived: true}, nil)
+	m.On("Update", mock.Anything, mock.MatchedBy(func(p *Product) bool { return !p.IsArchived })).Return(nil)
+
+	r := setupProductEngine(m, fakeParser{role: "ADMIN"})
+	w := doReq(t, r, "PUT", "/api/v1/products/"+id.String(), `{"is_archived":false}`, "tok")
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestListInvalidCategoryID(t *testing.T) {
 	m := new(mockRepo)
 	r := setupProductEngine(m, nil)

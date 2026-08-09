@@ -82,35 +82,73 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Product, error) {
 	return s.repo.Get(ctx, id)
 }
 
-// Update changes a product, enforcing unique SKU except for the row itself.
-func (s *Service) Update(ctx context.Context, id uuid.UUID, name, sku string, description *string, price float64,
-	categoryID uuid.UUID, lowStockThreshold int, isArchived bool) (*Product, error) {
+// UpdateParams carries the subset of fields a caller wants to change on a
+// product. Nil pointers mean "leave unchanged"; non-nil values overwrite.
+type UpdateParams struct {
+	Name              *string
+	SKU               *string
+	Description       *string
+	Price             *float64
+	CategoryID        *uuid.UUID
+	LowStockThreshold *int
+	IsArchived        *bool
+}
 
-	name = strings.TrimSpace(name)
-	sku = strings.TrimSpace(sku)
-	if name == "" || sku == "" || price < 0 || lowStockThreshold < 0 {
+// Update changes a product, enforcing unique SKU when the sku is provided.
+// Only fields present in params are overwritten; the rest keeps their
+// existing values. This supports PATCH-style partial updates.
+func (s *Service) Update(ctx context.Context, id uuid.UUID, params UpdateParams) (*Product, error) {
+	if params.Name != nil && strings.TrimSpace(*params.Name) == "" {
+		return nil, sharederr.ErrValidation
+	}
+	if params.SKU != nil && strings.TrimSpace(*params.SKU) == "" {
+		return nil, sharederr.ErrValidation
+	}
+	if params.Price != nil && *params.Price < 0 {
+		return nil, sharederr.ErrValidation
+	}
+	if params.LowStockThreshold != nil && *params.LowStockThreshold < 0 {
 		return nil, sharederr.ErrValidation
 	}
 
-	exists, err := s.repo.SKUExists(ctx, sku, id)
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		return nil, sharederr.ErrConflict
+	if params.SKU != nil {
+		newSKU := strings.TrimSpace(*params.SKU)
+		exists, err := s.repo.SKUExists(ctx, newSKU, id)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, sharederr.ErrConflict
+		}
 	}
 
 	p, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	p.Name = name
-	p.SKU = sku
-	p.Description = trimDescription(description)
-	p.Price = price
-	p.CategoryID = categoryID
-	p.LowStockThreshold = lowStockThreshold
-	p.IsArchived = isArchived
+
+	if params.Name != nil {
+		p.Name = strings.TrimSpace(*params.Name)
+	}
+	if params.SKU != nil {
+		p.SKU = strings.TrimSpace(*params.SKU)
+	}
+	if params.Description != nil {
+		p.Description = trimDescription(params.Description)
+	}
+	if params.Price != nil {
+		p.Price = *params.Price
+	}
+	if params.CategoryID != nil {
+		p.CategoryID = *params.CategoryID
+	}
+	if params.LowStockThreshold != nil {
+		p.LowStockThreshold = *params.LowStockThreshold
+	}
+	if params.IsArchived != nil {
+		p.IsArchived = *params.IsArchived
+	}
+
 	if err := s.repo.Update(ctx, p); err != nil {
 		return nil, err
 	}
