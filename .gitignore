@@ -3,16 +3,21 @@
 
 # OpenCode / Code Intelligence
 .codegraph/
-.omo/evidence/
+.omo/
 
 # Go build artifacts
 bin/
 dist/
 coverage.out
+/server
 
 # Web build artifacts
 node_modules/
 web/dist/
+
+# Browser test captures
+.playwright-mcp/
+/demo-*.png
 
 # OS
 .DS_Store
