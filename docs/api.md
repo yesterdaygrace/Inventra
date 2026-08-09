@@ -179,7 +179,7 @@ Access token TTL `15m`; refresh TTL `168h` (7d); refresh token rotated on every 
 Product: SKU unique, price numeric(12,2), CategoryID FK, LowStockThreshold default 10, IsArchived soft archive.
 
 ### GET `/api/v1/products` — public read
-- **Query:** `page`, `per_page`, `search` (name/SKU substr), `category_id`, `low_stock=true` (IsArchived=false AND quantity ≤ low_stock_threshold), `is_archived=true|false`.
+- **Query:** `page`, `per_page`, `q` (name/SKU substr), `category_id`, `min_price`, `max_price`, `low_stock=true` (IsArchived=false AND quantity ≤ low_stock_threshold), `is_archived=true|false`, `sort` (e.g. `price`, `-price`, `name`). *(Note: the live handler binds `q`, not `search`; verified by `handler_test.go`.)*
 - **Response 200 (paginated):** `data: [ { id, name, sku, description, price, category_id, category_name, low_stock_threshold, is_archived, stock_quantity, is_low_stock, created_at, updated_at } ]` + `pagination`.
 
 ### POST `/api/v1/products` — ADMIN
