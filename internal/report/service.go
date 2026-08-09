@@ -3,14 +3,15 @@
 package report
 
 import (
+	"context"
 	"strconv"
 )
 
 // Repository is the data-access contract the report service relies on.
 type Repository interface {
-	StockSummary() (*StockSummary, error)
-	CountProducts() (int64, error)
-	InventoryValue() (float64, error)
+	StockSummary(ctx context.Context) (*StockSummary, error)
+	CountProducts(ctx context.Context) (int64, error)
+	InventoryValue(ctx context.Context) (float64, error)
 }
 
 // Service assembles the report read-model responses.
@@ -25,15 +26,15 @@ func NewService(repo Repository) *Service {
 
 // Summary builds the enriched stock summary: per-category rows, low-stock
 // items, total product count, and total inventory valuation.
-func (s *Service) Summary() (*StockSummary, error) {
-	summary, err := s.repo.StockSummary()
+func (s *Service) Summary(ctx context.Context) (*StockSummary, error) {
+	summary, err := s.repo.StockSummary(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if summary.TotalProducts, err = s.repo.CountProducts(); err != nil {
+	if summary.TotalProducts, err = s.repo.CountProducts(ctx); err != nil {
 		return nil, err
 	}
-	if summary.TotalValue, err = s.repo.InventoryValue(); err != nil {
+	if summary.TotalValue, err = s.repo.InventoryValue(ctx); err != nil {
 		return nil, err
 	}
 	return summary, nil
@@ -42,8 +43,8 @@ func (s *Service) Summary() (*StockSummary, error) {
 // ExportRows flattens the summary into CSV header + data rows. Calling
 // Summary first via the repository keeps the numbers identical between the
 // JSON envelope and the downloadable file.
-func (s *Service) ExportRows() ([]string, [][]string, error) {
-	summary, err := s.Summary()
+func (s *Service) ExportRows(ctx context.Context) ([]string, [][]string, error) {
+	summary, err := s.Summary(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -61,8 +62,8 @@ func (s *Service) ExportRows() ([]string, [][]string, error) {
 }
 
 // LowStockRows flattens the low-stock items for the CSV export.
-func (s *Service) LowStockRows() ([]string, [][]string, error) {
-	summary, err := s.Summary()
+func (s *Service) LowStockRows(ctx context.Context) ([]string, [][]string, error) {
+	summary, err := s.Summary(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
