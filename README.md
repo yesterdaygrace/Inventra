@@ -98,7 +98,7 @@ demoing only; never enable it in production.
 | [docs/testing.md](docs/testing.md) | testing conventions |
 
 Backend source lives under `internal/<module>/`: `auth`, `category`, `product`,
-`inventory`, `activitylog`, `user`, `dashboard`, `report`, plus `shared/` for
+`warehouses`, `inventory`, `activitylog`, `user`, `dashboard`, `report`, plus `shared/` for
 cross-cutting concerns (response envelope, middleware, errors, export, config,
 database, logger, validator). Entrypoint: `cmd/server/main.go`.
 

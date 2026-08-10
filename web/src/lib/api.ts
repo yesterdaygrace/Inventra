@@ -18,8 +18,11 @@ import type {
   StockMovementResponse,
   StockSummary,
   Transaction,
+  TransferRequest,
   User,
   UserInput,
+  Warehouse,
+  WarehouseInput,
   RoleUpdateRequest,
 } from "@/types/api";
 
@@ -294,6 +297,24 @@ export const categoryApi = {
     downloadCsv("/categories/export", `categories-${new Date().toISOString().slice(0, 10)}.csv`),
 };
 
+// ---------- Warehouse API ----------
+
+export const warehouseApi = {
+  list: (params: { page?: number; per_page?: number; search?: string; is_active?: boolean } = {}) =>
+    requestList<Warehouse>(`/warehouses${buildQuery(params)}`),
+
+  get: (id: string) => request<Warehouse>(`/warehouses/${id}`),
+
+  create: (input: WarehouseInput) =>
+    request<Warehouse>("/warehouses", { method: "POST", body: JSON.stringify(input) }),
+
+  update: (id: string, input: Partial<WarehouseInput & { is_active: boolean }>) =>
+    request<Warehouse>(`/warehouses/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+
+  deactivate: (id: string) =>
+    request<{ success: boolean }>(`/warehouses/${id}`, { method: "DELETE" }),
+};
+
 // ---------- Inventory API ----------
 
 export const inventoryApi = {
@@ -303,6 +324,7 @@ export const inventoryApi = {
     product_id?: string;
     low_stock?: boolean;
     search?: string;
+    warehouse_id?: string;
   } = {}) => requestList<InventoryItem>(`/inventory${buildQuery(params)}`),
 
   stockIn: (input: StockMovementRequest) =>
@@ -317,11 +339,18 @@ export const inventoryApi = {
       body: JSON.stringify(input),
     }),
 
+  transfer: (input: TransferRequest) =>
+    request<StockMovementResponse>("/inventory/transfers", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
   transactions: (params: {
     page?: number;
     per_page?: number;
     product_id?: string;
     type?: "IN" | "OUT";
+    warehouse_id?: string;
   } = {}) => requestList<Transaction>(`/inventory/transactions${buildQuery(params)}`),
 
   exportCsv: () =>

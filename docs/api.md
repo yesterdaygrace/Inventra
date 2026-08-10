@@ -71,9 +71,14 @@ Response envelope carries `pagination` object: `page`, `per_page`, `total`, `tot
 | `POST /categories` | – | – | – | ✔ |
 | `PUT /categories/:id` | – | – | – | ✔ |
 | `DELETE /categories/:id` | – | – | – | ✔ |
+| `GET /warehouses` | ✔ | ✔ | ✔ | ✔ |
+| `POST /warehouses` | – | – | – | ✔ |
+| `PUT /warehouses/:id` | – | – | – | ✔ |
+| `DELETE /warehouses/:id` | – | – | – | ✔ |
 | `GET /inventory` | – | ✔ | ✔ | ✔ |
 | `POST /inventory/stock-in` | – | – | ✔ | ✔ |
 | `POST /inventory/stock-out` | – | – | ✔ | ✔ |
+| `POST /inventory/transfers` | – | – | ✔ | ✔ |
 | `GET /inventory/transactions` | – | ✔ | ✔ | ✔ |
 | `GET /inventory/export` | – | ✔ | ✔ | ✔ |
 | `GET /dashboard/summary` | – | ✔ | ✔ | ✔ |
@@ -81,6 +86,15 @@ Response envelope carries `pagination` object: `page`, `per_page`, `total`, `tot
 
 Auth guard = presence of a valid bearer access token; role guard enforced via
 `RoleRequired(ROLE)` helper middleware. Valid token with insufficient role → `403 Forbidden`.
+
+### Rate limiting (public auth routes)
+
+Public auth routes (`/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/demo`) are
+rate-limited per client IP using an in-memory token bucket. Default budgets
+(configurable via env): login 10/min, refresh 30/min, register 5/min, demo 5/min.
+When the budget is exhausted the API returns `429 Too Many Requests` with a
+`Retry-After` header. See `LOGIN_RATE_LIMIT_RPM`, `REFRESH_RATE_LIMIT_RPM`,
+`REGISTER_RATE_LIMIT_RPM`, `DEMO_RATE_LIMIT_RPM` in `config.go`.
 
 ---
 
@@ -226,27 +240,63 @@ Category: Name unique; deactivate semantics via `IsActive=false` (no hard delete
 
 ---
 
+## 6a. Warehouses Module
+
+Warehouse: code unique; deactivate semantics via `IsActive=false` (no hard delete for referenced warehouses). A `DEFAULT` warehouse is seeded and used as the fallback when a stock movement does not specify a `warehouse_id`.
+
+### GET `/api/v1/warehouses` — public read
+- **Query:** `page`, `per_page`, `search` (substr match on name or code), `is_active=true|false`, `sort=name|code|created_at|±`.
+- **Response 200 (paginated):** `data: [ { id, code, name, description, is_active, inventory_count, created_at, updated_at } ]` + `pagination`.
+
+### POST `/api/v1/warehouses` — ADMIN
+- **Request:** `{ "code": "*" (unique, required), "name": "*" (required), "description": "" }`
+- **Response 201:** warehouse object.
+- **Errors:** 400 validation; 409 duplicate code.
+
+### PUT `/api/v1/warehouses/:id` — ADMIN
+- **Request:** any subset of `{ code, name, description, is_active }`.
+- **Response 200:** updated warehouse.
+- **Errors:** 400 validation; 404; 409 duplicate code.
+
+### DELETE `/api/v1/warehouses/:id` — ADMIN
+- **Response 200:** `{ "success": true, "message": "warehouse deactivated" }` (sets `IsActive=false`).
+- **Errors:** 404; 409 warehouse has inventory rows (must transfer stock out first).
+
+---
+
 ## 7. Inventory Module (W6/W7)
 
-Inventory: 1:1 with product (ProductID unique); transactions typed `IN`/`OUT`; Quantity > 0 on transactions.
+Inventory is tracked per (product, warehouse) pair — the `inventory` table has a
+composite unique key on `(product_id, warehouse_id)`. Transactions are typed
+`IN`/`OUT`; quantity > 0 on transactions. Without a `warehouse_id` filter, list
+responses aggregate quantities across all warehouses; with one, they return the
+per-warehouse stock. Stock movements default to the seeded `DEFAULT` warehouse
+when `warehouse_id` is omitted.
 
 ### GET `/api/v1/inventory` — any authenticated
-- **Query:** `page`, `per_page`, `product_id`, `low_stock=true`, `search` (product name/SKU).
+- **Query:** `page`, `per_page`, `product_id`, `low_stock=true`, `search` (product name/SKU), `warehouse_id` (optional UUID).
 - **Response 200 (paginated):** `data: [ { product_id, product_sku, product_name, quantity, updated_at } ]` + `pagination`.
   Every product is returned (left-joined), with quantity `0` when no stock row exists yet.
 
 ### POST `/api/v1/inventory/stock-in` — STAFF / ADMIN
-- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional" }`
+- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional", "warehouse_id": "optional UUID" }`
 - **Response 200:** `{ product_id, quantity, updated_at }`. Committed atomically with the history row.
+  When `warehouse_id` is omitted the movement targets the seeded `DEFAULT` warehouse.
 
 ### POST `/api/v1/inventory/stock-out` — STAFF / ADMIN
-- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional" }`
+- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional", "warehouse_id": "optional UUID" }`
 - **Response 200:** `{ product_id, quantity, updated_at }`.
 - **Errors:** 400 validation; 409 insufficient stock (quantity would go below 0), rolled back with no partial history row.
 
+### POST `/api/v1/inventory/transfers` — STAFF / ADMIN
+- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "from_warehouse_id": "*", "to_warehouse_id": "*", "note": "optional" }`
+- **Response 200:** `{ product_id, quantity, updated_at }` (the destination warehouse's updated quantity).
+- **Semantics:** single DB transaction — `SELECT ... FOR UPDATE` on the source row, decrement source, upsert destination, and write two history rows (`OUT` from source, `IN` to destination) sharing one `transfer_id`. Total stock across warehouses is conserved.
+- **Errors:** 400 validation (including `from == to`); 404 unknown product or warehouse; 409 insufficient stock at source (rolled back with no partial history rows).
+
 ### GET `/api/v1/inventory/transactions` — any authenticated
-- **Query:** `page`, `per_page`, `product_id`, `type=IN|OUT`.
-- **Response 200 (paginated):** `data: [ { id, product_id, product_sku, product_name, type, quantity, unit_cost, note, user_id, created_at } ]` + `pagination`.
+- **Query:** `page`, `per_page`, `product_id`, `type=IN|OUT`, `warehouse_id` (optional UUID).
+- **Response 200 (paginated):** `data: [ { id, product_id, product_sku, product_name, type, quantity, unit_cost, note, user_id, warehouse_id, transfer_id, created_at } ]` + `pagination`.
 
 ### GET `/api/v1/inventory/export` — any authenticated
 - **Response 200:** CSV download (`attachment; filename=inventory_<ts>.csv`) with columns `product_id,sku,name,quantity,updated_at`.

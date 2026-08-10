@@ -61,25 +61,36 @@ func (h *Handler) record(c *gin.Context, action, entityID string, details gin.H)
 }
 
 type listInventoryRequest struct {
-	ProductID string `form:"product_id"`
-	Search    string `form:"search"`
-	LowStock  bool   `form:"low_stock"`
-	Page      int    `form:"page"`
-	PerPage   int    `form:"per_page"`
+	ProductID   string `form:"product_id"`
+	Search      string `form:"search"`
+	LowStock    bool   `form:"low_stock"`
+	WarehouseID string `form:"warehouse_id"`
+	Page        int    `form:"page"`
+	PerPage     int    `form:"per_page"`
 }
 
 type stockRequest struct {
-	ProductID string   `json:"product_id" validate:"required"`
-	Quantity  int      `json:"quantity" validate:"required,min=1"`
-	UnitCost  *float64 `json:"unit_cost"`
-	Note      *string  `json:"note"`
+	ProductID   string   `json:"product_id" validate:"required"`
+	Quantity    int      `json:"quantity" validate:"required,min=1"`
+	UnitCost    *float64 `json:"unit_cost"`
+	Note        *string  `json:"note"`
+	WarehouseID *string  `json:"warehouse_id"`
+}
+
+type transferRequest struct {
+	ProductID       string  `json:"product_id" validate:"required"`
+	Quantity        int     `json:"quantity" validate:"required,min=1"`
+	FromWarehouseID string  `json:"from_warehouse_id" validate:"required"`
+	ToWarehouseID   string  `json:"to_warehouse_id" validate:"required"`
+	Note            *string `json:"note"`
 }
 
 type transactionsRequest struct {
-	ProductID string `form:"product_id"`
-	Type      string `form:"type"`
-	Page      int    `form:"page"`
-	PerPage   int    `form:"per_page"`
+	ProductID   string `form:"product_id"`
+	Type        string `form:"type"`
+	WarehouseID string `form:"warehouse_id"`
+	Page        int    `form:"page"`
+	PerPage     int    `form:"per_page"`
 }
 
 type inventoryEnvelope struct {
@@ -100,6 +111,8 @@ type transactionEnvelope struct {
 	UnitCost    *float64   `json:"unit_cost,omitempty"`
 	Note        *string    `json:"note,omitempty"`
 	UserID      *uuid.UUID `json:"user_id,omitempty"`
+	WarehouseID *uuid.UUID `json:"warehouse_id,omitempty"`
+	TransferID  *uuid.UUID `json:"transfer_id,omitempty"`
 	CreatedAt   string     `json:"created_at"`
 }
 
@@ -146,6 +159,14 @@ func (h *Handler) List(c *gin.Context) {
 			return
 		}
 		q.ProductID = id
+	}
+	if req.WarehouseID != "" {
+		id, ok := parseUUID(req.WarehouseID)
+		if !ok {
+			response.Error(c, sharederr.ErrValidation)
+			return
+		}
+		q.WarehouseID = &id
 	}
 
 	views, total, err := h.svc.List(c.Request.Context(), q)
@@ -224,6 +245,16 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 		return
 	}
 
+	var whID *uuid.UUID
+	if req.WarehouseID != nil {
+		id, ok := parseUUID(*req.WarehouseID)
+		if !ok {
+			response.Error(c, sharederr.ErrValidation)
+			return
+		}
+		whID = &id
+	}
+
 	userID := middleware.UserIDFromContext(c)
 	uid := userID
 
@@ -231,21 +262,23 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 	var err error
 	if kind == "IN" {
 		inv, err = h.svc.StockIn(c.Request.Context(), Movement{
-			ProductID: pid,
-			Type:      "IN",
-			Quantity:  req.Quantity,
-			UnitCost:  req.UnitCost,
-			Note:      req.Note,
-			UserID:    &uid,
+			ProductID:   pid,
+			Type:        "IN",
+			Quantity:    req.Quantity,
+			UnitCost:    req.UnitCost,
+			Note:        req.Note,
+			UserID:      &uid,
+			WarehouseID: whID,
 		})
 	} else {
 		inv, err = h.svc.StockOut(c.Request.Context(), Movement{
-			ProductID: pid,
-			Type:      "OUT",
-			Quantity:  req.Quantity,
-			UnitCost:  req.UnitCost,
-			Note:      req.Note,
-			UserID:    &uid,
+			ProductID:   pid,
+			Type:        "OUT",
+			Quantity:    req.Quantity,
+			UnitCost:    req.UnitCost,
+			Note:        req.Note,
+			UserID:      &uid,
+			WarehouseID: whID,
 		})
 	}
 	if err != nil {
@@ -253,10 +286,85 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 		return
 	}
 
-	h.record(c, "STOCK_"+kind, pid.String(), gin.H{
+	details := gin.H{
 		"product_id": pid.String(),
 		"quantity":   req.Quantity,
 		"note":       noteOrNil(req.Note),
+	}
+	if whID != nil {
+		details["warehouse_id"] = whID.String()
+	}
+	h.record(c, "STOCK_"+kind, pid.String(), details)
+	response.OK(c, gin.H{
+		"product_id": inv.ProductID,
+		"quantity":   inv.Quantity,
+		"updated_at": inv.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+// Transfer handles POST /inventory/transfers — moves stock between warehouses.
+// @Tags inventory
+// @Summary Transfer stock between warehouses
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body transferRequest true "Transfer payload"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 401 {object} response.Body
+// @Failure 403 {object} response.Body
+// @Failure 404 {object} response.Body
+// @Failure 409 {object} response.Body
+// @Router /inventory/transfers [post]
+func (h *Handler) Transfer(c *gin.Context) {
+	var req transferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+	if err := h.val.Validate(req); err != nil {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+
+	pid, ok := parseUUID(req.ProductID)
+	if !ok {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+	from, ok := parseUUID(req.FromWarehouseID)
+	if !ok {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+	to, ok := parseUUID(req.ToWarehouseID)
+	if !ok {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+
+	userID := middleware.UserIDFromContext(c)
+	uid := userID
+
+	inv, err := h.svc.Transfer(c.Request.Context(), Transfer{
+		ProductID:       pid,
+		FromWarehouseID: from,
+		ToWarehouseID:   to,
+		Quantity:        req.Quantity,
+		Note:            req.Note,
+		UserID:          &uid,
+	})
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	h.record(c, "TRANSFER", pid.String(), gin.H{
+		"product_id":        pid.String(),
+		"from_warehouse_id": from.String(),
+		"to_warehouse_id":   to.String(),
+		"quantity":          req.Quantity,
+		"note":              noteOrNil(req.Note),
 	})
 	response.OK(c, gin.H{
 		"product_id": inv.ProductID,
@@ -306,6 +414,14 @@ func (h *Handler) Transactions(c *gin.Context) {
 		}
 		q.ProductID = id
 	}
+	if req.WarehouseID != "" {
+		id, ok := parseUUID(req.WarehouseID)
+		if !ok {
+			response.Error(c, sharederr.ErrValidation)
+			return
+		}
+		q.WarehouseID = &id
+	}
 
 	views, total, err := h.svc.Transactions(c.Request.Context(), q)
 	if err != nil {
@@ -325,6 +441,8 @@ func (h *Handler) Transactions(c *gin.Context) {
 			UnitCost:    v.UnitCost,
 			Note:        v.Note,
 			UserID:      v.UserID,
+			WarehouseID: v.WarehouseID,
+			TransferID:  v.TransferID,
 			CreatedAt:   v.CreatedAt,
 		})
 	}

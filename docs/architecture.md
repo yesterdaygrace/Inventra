@@ -215,15 +215,16 @@ internal/
 
 | Module | Responsibility | Key Features |
 |--------|---------------|--------------|
-| **auth** | JWT access/refresh rotation, bcrypt passwords, RBAC | Register, login, logout, refresh, change-password, update-profile, RBAC middleware |
+| **auth** | JWT access/refresh rotation, bcrypt passwords, RBAC | Register, login, logout, refresh, change-password, update-profile, RBAC middleware, per-IP rate limiting on public routes |
 | **user** | Admin user management | List/search/paginate, get by ID, update profile, assign role, activate/deactivate, self-protection |
 | **category** | Category CRUD | Full CRUD, search, sort, pagination, CSV export, conflict on delete if in use |
 | **product** | Product CRUD with search/filter/sort | CRUD, search (name/SKU), category filter, price range, low-stock filter, is-archived filter, sort, pagination, CSV export, unique SKU enforcement |
-| **inventory** | Stock movements with atomic transactions | Stock-in, stock-out (DB transaction), low-stock tracking, inventory list (joined with products), transaction history, low-stock filter, CSV export |
+| **warehouses** | Warehouse CRUD for multi-location stock | CRUD, search (name/code), is-active filter, soft-deactivate, conflict on delete if inventory references it; DEFAULT warehouse seeded for backward compatibility |
+| **inventory** | Stock movements with atomic transactions | Stock-in, stock-out (DB transaction, per warehouse), warehouse-to-warehouse transfers (FOR UPDATE, two history rows sharing transfer_id), low-stock tracking, inventory list (joined with products, aggregate or per warehouse), transaction history, low-stock filter, CSV export |
 | **dashboard** | Aggregates computed on demand | Total products, categories, inventory value, low-stock summary, recent activities, pending restock, warehouse health, top-selling products, inventory movement series, category distribution |
 | **report** | Stock summary + CSV export | Stock summary report (per-category totals, low-stock list), CSV export via shared util |
-| **activitylog** | Write on actions + filtered read | Logs auth events (login/register), mutation events (CRUD, stock-in/out), paginated/filtered read endpoint, never fails business operation on logging error |
-| **shared** | Foundational packages | Config (Viper), logger (Zap), database (GORM), response envelope, validator (validator/v10), typed errors, middleware, export util |
+| **activitylog** | Write on actions + filtered read | Logs auth events (login/register), mutation events (CRUD, stock-in/out, transfers), paginated/filtered read endpoint, never fails business operation on logging error |
+| **shared** | Foundational packages | Config (Viper), logger (Zap), database (GORM), response envelope, validator (validator/v10), typed errors, middleware (+ rate limiting), export util |
 
 ---
 

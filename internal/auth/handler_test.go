@@ -33,7 +33,7 @@ func setupAuthEngineMode(repo *mockRepo, demoMode bool) (*gin.Engine, *Service, 
 	h := NewHandler(svc, validator.New())
 	r := gin.New()
 	group := r.Group("/api/v1")
-	RegisterRoutes(group, h, tm, demoMode)
+	RegisterRoutes(group, h, tm, demoMode, RateLimits{LoginRPM: 1000, RefreshRPM: 1000, RegisterRPM: 1000, DemoRPM: 1000})
 	return r, svc, tm
 }
 
@@ -46,7 +46,7 @@ func setupAuthEngineWith(tm *TokenManager, repo *mockRepo) *gin.Engine {
 	h := NewHandler(svc, validator.New())
 	r := gin.New()
 	group := r.Group("/api/v1")
-	RegisterRoutes(group, h, tm, false)
+	RegisterRoutes(group, h, tm, false, RateLimits{LoginRPM: 1000, RefreshRPM: 1000, RegisterRPM: 1000, DemoRPM: 1000})
 	return r
 }
 

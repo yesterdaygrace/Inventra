@@ -102,9 +102,17 @@ Applied by `SecureHeaders()` middleware on every response:
 
 ## 6. Rate Limiting
 
-- Apply rate limiting on auth endpoints (`/auth/login`, `/auth/refresh`, `/auth/register`)
-  to mitigate brute-force and token stuffing, at the middleware layer
-  (per-IP sliding window or token bucket). Exact limits defined during W3 middleware implementation.
+- In-memory **per-IP token bucket** middleware at the middleware layer
+  (`internal/shared/middleware/ratelimit.go`) applied to the public auth
+  endpoints `/auth/login`, `/auth/refresh`, `/auth/register`, and `/auth/demo`
+  to mitigate brute-force and token stuffing.
+- Default budgets (requests/minute per IP): login **10**, refresh **30**,
+  register **5**, demo **5** — configurable via `LOGIN_RATE_LIMIT_RPM`,
+  `REFRESH_RATE_LIMIT_RPM`, `REGISTER_RATE_LIMIT_RPM`, `DEMO_RATE_LIMIT_RPM`.
+- Exceeded budget returns `429 Too Many Requests` with a `Retry-After: 60`
+  header; buckets idle longer than 1 minute are evicted to bound memory.
+- No external store is used (single-instance modular monolith; Redis deferred
+  until multi-instance deployment is required).
 
 ---
 

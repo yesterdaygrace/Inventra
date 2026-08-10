@@ -14,42 +14,50 @@ import (
 )
 
 const (
-	defaultPort           = "8080"
-	defaultBCryptCost     = 12
-	defaultLowStock       = 10
-	defaultAccessTTL      = 15 * time.Minute
-	defaultRefreshTTL     = 7 * 24 * time.Hour
-	defaultLogLevel       = "info"
-	defaultAppEnv         = "development"
-	defaultDBSslMode      = "disable"
-	defaultEnvFile        = ".env"
-	defaultDemoMode       = false
-	envFileOverrideVar    = "ENV_FILE"
-	accessTTLDefaultStr   = "15m"
-	refreshTTLDefaultStr  = "168h"
-	accessTTLOverrideKey  = "JWT_ACCESS_TTL"
-	refreshTTLOverrideKey = "JWT_REFRESH_TTL"
-	requiredPrefix        = "missing required configuration: "
+	defaultPort                 = "8080"
+	defaultBCryptCost           = 12
+	defaultLowStock             = 10
+	defaultAccessTTL            = 15 * time.Minute
+	defaultRefreshTTL           = 7 * 24 * time.Hour
+	defaultLogLevel             = "info"
+	defaultAppEnv               = "development"
+	defaultDBSslMode            = "disable"
+	defaultEnvFile              = ".env"
+	defaultDemoMode             = false
+	defaultLoginRateLimitRPM    = 10
+	defaultRefreshRateLimitRPM  = 30
+	defaultRegisterRateLimitRPM = 5
+	defaultDemoRateLimitRPM     = 5
+	envFileOverrideVar          = "ENV_FILE"
+	accessTTLDefaultStr         = "15m"
+	refreshTTLDefaultStr        = "168h"
+	accessTTLOverrideKey        = "JWT_ACCESS_TTL"
+	refreshTTLOverrideKey       = "JWT_REFRESH_TTL"
+	requiredPrefix              = "missing required configuration: "
 )
 
 // Config holds all runtime configuration for the application.
 type Config struct {
-	AppEnv            string
-	Port              string
-	DBHost            string
-	DBPort            string
-	DBUser            string
-	DBPassword        string
-	DBName            string
-	DBSslMode         string
-	JWTSecret         string
-	JWTAccessTTL      time.Duration
-	JWTRefreshTTL     time.Duration
-	BCryptCost        int
-	LowStockThreshold int
-	CORSOrigins       []string
-	LogLevel          string
-	DemoMode          bool
+	AppEnv               string
+	Port                 string
+	DBHost               string
+	DBPort               string
+	DBUser               string
+	DBPassword           string
+	DBName               string
+	DBSslMode            string
+	JWTSecret            string
+	JWTAccessTTL         time.Duration
+	JWTRefreshTTL        time.Duration
+	BCryptCost           int
+	LowStockThreshold    int
+	CORSOrigins          []string
+	LogLevel             string
+	DemoMode             bool
+	LoginRateLimitRPM    int
+	RefreshRateLimitRPM  int
+	RegisterRateLimitRPM int
+	DemoRateLimitRPM     int
 }
 
 // MissingRequiredError is returned when a required configuration value
@@ -96,22 +104,26 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		AppEnv:            v.GetString("APP_ENV"),
-		Port:              v.GetString("PORT"),
-		DBHost:            v.GetString("DB_HOST"),
-		DBPort:            v.GetString("DB_PORT"),
-		DBUser:            v.GetString("DB_USER"),
-		DBPassword:        v.GetString("DB_PASSWORD"),
-		DBName:            v.GetString("DB_NAME"),
-		DBSslMode:         v.GetString("DB_SSLMODE"),
-		JWTSecret:         v.GetString("JWT_SECRET"),
-		JWTAccessTTL:      v.GetDuration(accessTTLOverrideKey),
-		JWTRefreshTTL:     v.GetDuration(refreshTTLOverrideKey),
-		BCryptCost:        v.GetInt("BCRYPT_COST"),
-		LowStockThreshold: v.GetInt("LOW_STOCK_THRESHOLD"),
-		CORSOrigins:       splitOrigins(v.GetString("CORS_ORIGINS")),
-		LogLevel:          v.GetString("LOG_LEVEL"),
-		DemoMode:          v.GetBool("DEMO_MODE"),
+		AppEnv:               v.GetString("APP_ENV"),
+		Port:                 v.GetString("PORT"),
+		DBHost:               v.GetString("DB_HOST"),
+		DBPort:               v.GetString("DB_PORT"),
+		DBUser:               v.GetString("DB_USER"),
+		DBPassword:           v.GetString("DB_PASSWORD"),
+		DBName:               v.GetString("DB_NAME"),
+		DBSslMode:            v.GetString("DB_SSLMODE"),
+		JWTSecret:            v.GetString("JWT_SECRET"),
+		JWTAccessTTL:         v.GetDuration(accessTTLOverrideKey),
+		JWTRefreshTTL:        v.GetDuration(refreshTTLOverrideKey),
+		BCryptCost:           v.GetInt("BCRYPT_COST"),
+		LowStockThreshold:    v.GetInt("LOW_STOCK_THRESHOLD"),
+		CORSOrigins:          splitOrigins(v.GetString("CORS_ORIGINS")),
+		LogLevel:             v.GetString("LOG_LEVEL"),
+		DemoMode:             v.GetBool("DEMO_MODE"),
+		LoginRateLimitRPM:    v.GetInt("LOGIN_RATE_LIMIT_RPM"),
+		RefreshRateLimitRPM:  v.GetInt("REFRESH_RATE_LIMIT_RPM"),
+		RegisterRateLimitRPM: v.GetInt("REGISTER_RATE_LIMIT_RPM"),
+		DemoRateLimitRPM:     v.GetInt("DEMO_RATE_LIMIT_RPM"),
 	}
 
 	// Duration values from viper need explicit parsing when set as strings.
@@ -123,6 +135,18 @@ func Load() (*Config, error) {
 	}
 	if cfg.LowStockThreshold <= 0 {
 		cfg.LowStockThreshold = defaultLowStock
+	}
+	if cfg.LoginRateLimitRPM <= 0 {
+		cfg.LoginRateLimitRPM = defaultLoginRateLimitRPM
+	}
+	if cfg.RefreshRateLimitRPM <= 0 {
+		cfg.RefreshRateLimitRPM = defaultRefreshRateLimitRPM
+	}
+	if cfg.RegisterRateLimitRPM <= 0 {
+		cfg.RegisterRateLimitRPM = defaultRegisterRateLimitRPM
+	}
+	if cfg.DemoRateLimitRPM <= 0 {
+		cfg.DemoRateLimitRPM = defaultDemoRateLimitRPM
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -145,6 +169,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("CORS_ORIGINS", "")
 	v.SetDefault(envFileOverrideVar, defaultEnvFile)
 	v.SetDefault("DEMO_MODE", defaultDemoMode)
+	v.SetDefault("LOGIN_RATE_LIMIT_RPM", defaultLoginRateLimitRPM)
+	v.SetDefault("REFRESH_RATE_LIMIT_RPM", defaultRefreshRateLimitRPM)
+	v.SetDefault("REGISTER_RATE_LIMIT_RPM", defaultRegisterRateLimitRPM)
+	v.SetDefault("DEMO_RATE_LIMIT_RPM", defaultDemoRateLimitRPM)
 }
 
 func (c *Config) validate() error {

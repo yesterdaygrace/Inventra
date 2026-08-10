@@ -13,8 +13,10 @@ import (
 	"gorm.io/gorm"
 
 	"inventory/internal/auth"
+	"inventory/internal/inventory"
 	"inventory/internal/shared/config"
 	"inventory/internal/shared/database"
+	"inventory/internal/warehouses"
 )
 
 const (
@@ -91,6 +93,9 @@ func run() error {
 	}
 	fmt.Println("migration complete")
 
+	if err := seedDefaultWarehouse(db); err != nil {
+		return err
+	}
 	if err := seedRoles(db); err != nil {
 		return err
 	}
@@ -100,6 +105,37 @@ func run() error {
 
 	return nil
 }
+
+// seedDefaultWarehouse creates the DEFAULT warehouse idempotently and
+// backfills any inventory rows that predate multi-warehouse support so every
+// row resolves to it. Safe to run repeatedly.
+func seedDefaultWarehouse(db *gorm.DB) error {
+	wh := warehouses.Warehouse{
+		Code:        "DEFAULT",
+		Name:        "Default Warehouse",
+		Description: strPtr("Fallback warehouse for legacy single-location stock"),
+		IsActive:    true,
+	}
+	if err := db.Where(warehouses.Warehouse{Code: "DEFAULT"}).FirstOrCreate(&wh).Error; err != nil {
+		return fmt.Errorf("seed default warehouse: %w", err)
+	}
+
+	if res := db.Model(&inventory.Inventory{}).
+		Where("warehouse_id IS NULL").
+		Update("warehouse_id", wh.ID); res.Error != nil {
+		return fmt.Errorf("backfill inventory warehouse_id: %w", res.Error)
+	}
+	if res := db.Model(&inventory.InventoryTransaction{}).
+		Where("warehouse_id IS NULL").
+		Update("warehouse_id", wh.ID); res.Error != nil {
+		return fmt.Errorf("backfill inventory_transactions warehouse_id: %w", res.Error)
+	}
+
+	fmt.Printf("seeded default warehouse %s (%s)\n", wh.Code, wh.ID)
+	return nil
+}
+
+func strPtr(s string) *string { return &s }
 
 // seedRoles inserts ADMIN and STAFF roles if they do not already exist.
 func seedRoles(db *gorm.DB) error {

@@ -8,21 +8,24 @@ import (
 	"inventory/internal/category"
 	"inventory/internal/inventory"
 	"inventory/internal/product"
+	"inventory/internal/warehouses"
 )
 
 // Models returns all GORM models for AutoMigrate in FK-dependency order.
-// Order: Role before User; Category before Product; Product before Inventory/InventoryTransaction;
+// Order: Role before User; Category before Product; Warehouse before
+// Inventory; Product before Inventory/InventoryTransaction;
 // User before RefreshToken and ActivityLog.
 func Models() []any {
 	return []any{
 		// Independent parent tables
 		&auth.Role{},
 		&category.Category{},
+		&warehouses.Warehouse{},
 		// User depends on Role
 		&auth.User{},
 		// Product depends on Category
 		&product.Product{},
-		// Inventory tables depend on Product
+		// Inventory tables depend on Product and Warehouse
 		&inventory.Inventory{},
 		&inventory.InventoryTransaction{},
 		// RefreshToken depends on User

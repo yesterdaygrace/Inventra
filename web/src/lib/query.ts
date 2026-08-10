@@ -33,6 +33,7 @@ export const queryClient = new QueryClient({
 export const listKeys = {
   products: (params: unknown) => ["products", params] as const,
   categories: (params: unknown) => ["categories", params] as const,
+  warehouses: (params: unknown) => ["warehouses", params] as const,
   inventory: (params: unknown) => ["inventory", params] as const,
   transactions: (params: unknown) => ["transactions", params] as const,
   users: (params: unknown) => ["users", params] as const,

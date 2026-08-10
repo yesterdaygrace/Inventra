@@ -111,6 +111,25 @@ export interface CategoryInput {
   description?: string;
 }
 
+// ---------- Warehouse ----------
+
+export interface Warehouse {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  is_active: boolean;
+  inventory_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WarehouseInput {
+  code: string;
+  name: string;
+  description?: string;
+}
+
 // ---------- Inventory ----------
 
 export interface InventoryItem {
@@ -131,6 +150,8 @@ export interface Transaction {
   unit_cost?: number;
   note?: string;
   user_id: string;
+  warehouse_id?: string;
+  transfer_id?: string;
   created_at: string;
 }
 
@@ -139,12 +160,21 @@ export interface StockMovementRequest {
   quantity: number;
   unit_cost?: number;
   note?: string;
+  warehouse_id?: string;
 }
 
 export interface StockMovementResponse {
   product_id: string;
   quantity: number;
   updated_at: string;
+}
+
+export interface TransferRequest {
+  product_id: string;
+  from_warehouse_id: string;
+  to_warehouse_id: string;
+  quantity: number;
+  note?: string;
 }
 
 // ---------- Dashboard ----------

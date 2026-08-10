@@ -11,6 +11,7 @@ var (
 	ErrUnauthorized = errors.New("unauthorized")
 	ErrForbidden    = errors.New("forbidden")
 	ErrConflict     = errors.New("conflict")
+	ErrRateLimited  = errors.New("rate limit exceeded")
 	ErrInternal     = errors.New("internal error")
 )
 

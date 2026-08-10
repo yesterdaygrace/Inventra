@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Search, Download, Plus, Minus, MoreHorizontal } from "lucide-react";
+import { Search, Download, Plus, Minus, ArrowLeftRight, MoreHorizontal } from "lucide-react";
 import {
   Badge,
   Button,
@@ -23,12 +23,13 @@ import {
 } from "@/components/ui";
 import { EmptyState, ErrorState, SkeletonList } from "@/components/ui/states";
 import { StockMovementDialog, type MovementType } from "@/components/inventory/stock-movement-dialog";
-import { inventoryApi, productApi, isApiError } from "@/lib/api";
+import { TransferDialog } from "@/components/inventory/transfer-dialog";
+import { inventoryApi, productApi, warehouseApi, isApiError } from "@/lib/api";
 import { listKeys } from "@/lib/query";
 import { useList, useApiMutation, useQueryClient } from "@/hooks/use-query";
 import { useAuth } from "@/lib/auth";
 import { formatNumber, formatDateTime } from "@/lib/format";
-import type { InventoryItem, StockMovementRequest } from "@/types/api";
+import type { InventoryItem, StockMovementRequest, TransferRequest } from "@/types/api";
 
 const PER_PAGE = 10;
 
@@ -45,6 +46,7 @@ export function InventoryPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [movementType, setMovementType] = React.useState<MovementType>("IN");
   const [movementProductId, setMovementProductId] = React.useState<string | undefined>(undefined);
+  const [transferOpen, setTransferOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
 
   React.useEffect(() => {
@@ -68,6 +70,10 @@ export function InventoryPage() {
     productApi.list({ per_page: 200, is_archived: false }),
   );
 
+  const warehouses = useList(listKeys.warehouses({ dropdown: true }), () =>
+    warehouseApi.list({ per_page: 200 }),
+  );
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -84,6 +90,7 @@ export function InventoryPage() {
     queryClient.invalidateQueries({ queryKey: ["inventory"] });
     queryClient.invalidateQueries({ queryKey: ["products"] });
     queryClient.invalidateQueries({ queryKey: ["inventory", "transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["warehouses"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     queryClient.invalidateQueries({ queryKey: ["reports"] });
   };
@@ -99,6 +106,14 @@ export function InventoryPage() {
       onError: () => {},
     },
   );
+
+  const transfer = useApiMutation((input: TransferRequest) => inventoryApi.transfer(input), {
+    onSuccess: () => {
+      invalidateAfterMovement();
+      toast({ title: "Transfer complete", variant: "success" });
+    },
+    onError: () => {},
+  });
 
   const openMovement = (type: MovementType, productId?: string) => {
     setMovementType(type);
@@ -129,6 +144,10 @@ export function InventoryPage() {
               <Button variant="secondary" onClick={() => openMovement("OUT")}>
                 <Minus className="h-4 w-4" />
                 Stock out
+              </Button>
+              <Button variant="outline" onClick={() => setTransferOpen(true)}>
+                <ArrowLeftRight className="h-4 w-4" />
+                Transfer
               </Button>
             </>
           )}
@@ -199,9 +218,19 @@ export function InventoryPage() {
         onOpenChange={setDialogOpen}
         movementType={movementType}
         products={products.data?.items ?? []}
+        warehouses={warehouses.data?.items ?? []}
         initialProductId={movementProductId}
         onSubmit={(values) => movement.mutateAsync(values).then(() => undefined)}
         submitting={movement.isPending}
+      />
+
+      <TransferDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        products={products.data?.items ?? []}
+        warehouses={warehouses.data?.items ?? []}
+        onSubmit={(values) => transfer.mutateAsync(values).then(() => undefined)}
+        submitting={transfer.isPending}
       />
     </div>
   );

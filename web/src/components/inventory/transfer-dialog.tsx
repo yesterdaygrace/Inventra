@@ -15,24 +15,22 @@ import {
   Label,
   Select,
 } from "@/components/ui";
-import type { Product, StockMovementRequest, Warehouse } from "@/types/api";
+import type { Product, TransferRequest, Warehouse } from "@/types/api";
 import { isApiError } from "@/lib/api";
 
-const movementSchema = z.object({
+const transferSchema = z.object({
   product_id: z.string().min(1, "Select a product"),
+  from_warehouse_id: z.string().min(1, "Select source warehouse"),
+  to_warehouse_id: z.string().min(1, "Select destination warehouse"),
   quantity: z.coerce.number({ invalid_type_error: "Enter a quantity" }).min(1, "Quantity must be at least 1"),
-  unit_cost: z.coerce.number({ invalid_type_error: "Enter a number" }).min(0).optional(),
   note: z.string().max(500).optional().or(z.literal("")),
-  warehouse_id: z.string().optional(),
 });
 
-export type MovementValues = z.infer<typeof movementSchema>;
-export type MovementType = "IN" | "OUT";
+export type TransferValues = z.infer<typeof transferSchema>;
 
-export function StockMovementDialog({
+export function TransferDialog({
   open,
   onOpenChange,
-  movementType,
   products,
   warehouses,
   initialProductId,
@@ -41,28 +39,25 @@ export function StockMovementDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  movementType: MovementType;
   products: Product[];
   warehouses: Warehouse[];
   initialProductId?: string;
-  onSubmit: (values: StockMovementRequest) => Promise<void>;
+  onSubmit: (values: TransferRequest) => Promise<void>;
   submitting: boolean;
 }) {
-  const isIn = movementType === "IN";
-
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<MovementValues>({
-    resolver: zodResolver(movementSchema),
+  } = useForm<TransferValues>({
+    resolver: zodResolver(transferSchema),
     values: {
       product_id: initialProductId ?? "",
+      from_warehouse_id: "",
+      to_warehouse_id: "",
       quantity: 1,
-      unit_cost: undefined,
       note: "",
-      warehouse_id: "",
     },
   });
 
@@ -80,30 +75,34 @@ export function StockMovementDialog({
   };
 
   const submit = handleSubmit(async (values) => {
+    if (values.from_warehouse_id === values.to_warehouse_id) {
+      setFormError("Source and destination warehouse must be different.");
+      return;
+    }
     setFormError(null);
     try {
       await onSubmit({
         product_id: values.product_id,
+        from_warehouse_id: values.from_warehouse_id,
+        to_warehouse_id: values.to_warehouse_id,
         quantity: values.quantity,
-        unit_cost: values.unit_cost || undefined,
         note: values.note?.trim() || undefined,
-        warehouse_id: values.warehouse_id || undefined,
       });
       reset();
       onOpenChange(false);
     } catch (err) {
-      setFormError(isApiError(err) ? err.message : `Could not ${isIn ? "stock in" : "stock out"} the item.`);
+      setFormError(isApiError(err) ? err.message : "Could not transfer the item.");
     }
   });
+
+  const activeWarehouses = warehouses.filter((w) => w.is_active !== false);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isIn ? "Stock in" : "Stock out"}</DialogTitle>
-          <DialogDescription>
-            {isIn ? "Add stock to a product." : "Remove stock from a product."}
-          </DialogDescription>
+          <DialogTitle>Transfer stock</DialogTitle>
+          <DialogDescription>Move stock from one warehouse to another.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4" noValidate>
           {formError && (
@@ -116,9 +115,9 @@ export function StockMovementDialog({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="movement-product">Product</Label>
+            <Label htmlFor="transfer-product">Product</Label>
             <Select
-              id="movement-product"
+              id="transfer-product"
               placeholder="Select a product"
               error={!!errors.product_id}
               options={products.map((p) => ({ value: p.id, label: `${p.name} (${p.sku})` }))}
@@ -129,9 +128,39 @@ export function StockMovementDialog({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="movement-quantity">Quantity</Label>
+              <Label htmlFor="transfer-from">From warehouse</Label>
+              <Select
+                id="transfer-from"
+                placeholder="Select source"
+                error={!!errors.from_warehouse_id}
+                options={activeWarehouses.map((w) => ({ value: w.id, label: `${w.name} (${w.code})` }))}
+                {...register("from_warehouse_id")}
+              />
+              {errors.from_warehouse_id && (
+                <p className="text-xs text-destructive">{errors.from_warehouse_id.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="transfer-to">To warehouse</Label>
+              <Select
+                id="transfer-to"
+                placeholder="Select destination"
+                error={!!errors.to_warehouse_id}
+                options={activeWarehouses.map((w) => ({ value: w.id, label: `${w.name} (${w.code})` }))}
+                {...register("to_warehouse_id")}
+              />
+              {errors.to_warehouse_id && (
+                <p className="text-xs text-destructive">{errors.to_warehouse_id.message}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="transfer-quantity">Quantity</Label>
               <Input
-                id="movement-quantity"
+                id="transfer-quantity"
                 type="number"
                 min="1"
                 step="1"
@@ -142,54 +171,24 @@ export function StockMovementDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="movement-cost">Unit cost (optional)</Label>
+              <Label htmlFor="transfer-note">Note (optional)</Label>
               <Input
-                id="movement-cost"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                error={!!errors.unit_cost}
-                {...register("unit_cost")}
+                id="transfer-note"
+                placeholder="Optional note"
+                error={!!errors.note}
+                {...register("note")}
               />
-              {errors.unit_cost && <p className="text-xs text-destructive">{errors.unit_cost.message}</p>}
+              {errors.note && <p className="text-xs text-destructive">{errors.note.message}</p>}
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="movement-warehouse">Warehouse (optional)</Label>
-            <Select
-              id="movement-warehouse"
-              placeholder="Default warehouse"
-              error={!!errors.warehouse_id}
-              options={warehouses
-                .filter((w) => w.is_active !== false)
-                .map((w) => ({ value: w.id, label: `${w.name} (${w.code})` }))}
-              {...register("warehouse_id")}
-            />
-            <p className="text-xs text-muted-foreground">
-              Leave empty to use the default warehouse.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="movement-note">Note (optional)</Label>
-            <Input
-              id="movement-note"
-              placeholder="Optional note"
-              error={!!errors.note}
-              {...register("note")}
-            />
-            {errors.note && <p className="text-xs text-destructive">{errors.note.message}</p>}
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onClose(false)} disabled={submitting}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting} variant={isIn ? "primary" : "danger"}>
+            <Button type="submit" disabled={submitting}>
               {submitting && <Loader2 className="animate-spin" />}
-              {isIn ? "Stock in" : "Stock out"}
+              Transfer
             </Button>
           </DialogFooter>
         </form>

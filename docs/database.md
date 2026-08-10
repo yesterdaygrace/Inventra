@@ -54,6 +54,16 @@ erDiagram
         timestamp updated_at
     }
 
+    warehouses {
+        uuid id PK
+        string code UK
+        string name
+        string description NULL
+        bool is_active "default true (soft-delete)"
+        timestamp created_at
+        timestamp updated_at
+    }
+
     products {
         uuid id PK
         string name
@@ -69,9 +79,11 @@ erDiagram
 
     inventory {
         uuid id PK
-        uuid product_id UK FK
+        uuid product_id FK
+        uuid warehouse_id FK
         int quantity ">= 0"
         timestamp updated_at
+        string unique_pair "UK (product_id, warehouse_id)"
     }
 
     inventory_transactions {
@@ -82,6 +94,8 @@ erDiagram
         numeric unit_cost NULL "numeric(12,2)"
         string note NULL
         uuid user_id NULL FK
+        uuid warehouse_id NULL FK
+        uuid transfer_id NULL "pairs two rows of a transfer"
         timestamp created_at
     }
 
@@ -101,7 +115,9 @@ erDiagram
     users ||--o{ inventory_transactions : "one-to-many"
     users ||--o{ activity_logs : "one-to-many"
     categories ||--o{ products : "one-to-many"
-    products ||--o{ inventory : "one-to-one"
+    warehouses ||--o{ inventory : "one-to-many"
+    warehouses ||--o{ inventory_transactions : "one-to-many"
+    products ||--o{ inventory : "one-to-many (per warehouse)"
     products ||--o{ inventory_transactions : "one-to-many"
 ```
 
@@ -186,21 +202,38 @@ erDiagram
 - SKU must be unique across all products
 - Price stored as decimal for financial accuracy
 
-### 6. `inventory`
+### 6. `warehouses`
+
+| Column | Type | Nullable | Default | Constraints | Description |
+|--------|------|----------|---------|-------------|-------------|
+| `id` | `uuid` | NO | `gen_random_uuid()` | PRIMARY KEY | Warehouse identifier |
+| `code` | `text` | NO | | UNIQUE | Warehouse code (short, human-readable, e.g. DEFAULT, WH-001) |
+| `name` | `text` | NO | | | Display name |
+| `description` | `text` | YES | | | Optional description |
+| `is_active` | `boolean` | NO | `true` | | Soft-deactivate flag |
+| `created_at` | `timestamp` | NO | `CURRENT_TIMESTAMP` | | Creation timestamp |
+| `updated_at` | `timestamp` | YES | `CURRENT_TIMESTAMP` | | Last update timestamp |
+
+**Notes**:
+- A `DEFAULT` warehouse is seeded by `cmd/seed` and used as the fallback for stock movements that omit a warehouse
+- Soft-deactivate only; hard delete blocked while inventory rows reference the warehouse
+
+### 7. `inventory`
 
 | Column | Type | Nullable | Default | Constraints | Description |
 |--------|------|----------|---------|-------------|-------------|
 | `id` | `uuid` | NO | `gen_random_uuid()` | PRIMARY KEY | Inventory record identifier |
-| `product_id` | `uuid` | NO | | UNIQUE, FOREIGN KEY (`products.id`) | Associated product |
-| `quantity` | `integer` | NO | `0` | CHECK (`quantity` >= 0) | Current stock quantity |
+| `product_id` | `uuid` | NO | | UNIQUE (`product_id, warehouse_id`), FOREIGN KEY (`products.id`) | Associated product |
+| `warehouse_id` | `uuid` | NO | | UNIQUE (`product_id, warehouse_id`) | Associated warehouse |
+| `quantity` | `integer` | NO | `0` | CHECK (`quantity` >= 0) | Current stock quantity in this warehouse |
 | `updated_at` | `timestamp` | YES | `CURRENT_TIMESTAMP` | | Last stock update |
 
 **Notes**:
-- One row per product (1:1 relationship)
+- One row per (product, warehouse) pair — the same product can be tracked across multiple locations
+- The legacy single-warehouse unique constraint on `product_id` alone was replaced by the composite key; `cmd/seed` backfills existing rows to the `DEFAULT` warehouse
 - Quantity updated atomically via transactions
-- Represents current stock level only; history in `inventory_transactions`
 
-### 7. `inventory_transactions`
+### 8. `inventory_transactions`
 
 | Column | Type | Nullable | Default | Constraints | Description |
 |--------|------|----------|---------|-------------|-------------|
@@ -211,14 +244,17 @@ erDiagram
 | `unit_cost` | `numeric(12,2)` | YES | | | Unit cost at time of transaction |
 | `note` | `text` | YES | | | Optional note/reason |
 | `user_id` | `uuid` | YES | | FOREIGN KEY (`users.id`) | User who performed transaction |
+| `warehouse_id` | `uuid` | YES | | | Warehouse where this movement occurred |
+| `transfer_id` | `uuid` | YES | | | Groups two rows of a warehouse transfer (OUT + IN) sharing one UUID |
 | `created_at` | `timestamp` | NO | `CURRENT_TIMESTAMP` | | Creation timestamp |
 
 **Notes**:
 - Complete audit trail of all inventory movements
+- Two rows sharing the same `transfer_id` encode a warehouse-to-warehouse transfer (OUT from source, IN to destination)
 - `unit_cost` nullable for OUT transactions (use last IN cost or product price)
 - Indexed for dashboard reporting and history queries
 
-### 8. `activity_logs`
+### 9. `activity_logs`
 
 | Column | Type | Nullable | Default | Constraints | Description |
 |--------|------|----------|---------|-------------|-------------|
@@ -238,9 +274,9 @@ erDiagram
 
 ## Low-Stock Semantics
 
-A product is considered **low stock** when:
+A product is considered **low stock** when (in a given warehouse, when filtered):
 
-1. **Inventory condition**: `inventory.quantity <= products.low_stock_threshold`
+1. **Inventory condition**: `SUM(inventory.quantity) <= products.low_stock_threshold` (aggregated across warehouses unless a `warehouse_id` filter is applied)
 2. **Product status**: `products.is_archived = false`
 
 **Configuration**:
@@ -258,9 +294,10 @@ A product is considered **low stock** when:
 | `refresh_tokens` | `refresh_tokens_token_hash_key` | UNIQUE | Prevent token reuse |
 | `refresh_tokens` | `refresh_tokens_user_id_fkey` | FOREIGN KEY | Reference `users.id` |
 | `categories` | `categories_name_key` | UNIQUE | Enforce unique category names |
+| `warehouses` | `warehouses_code_key` | UNIQUE | Enforce unique warehouse codes |
 | `products` | `products_sku_key` | UNIQUE | Enforce unique SKUs |
 | `products` | `products_category_id_fkey` | FOREIGN KEY | Reference `categories.id` |
-| `inventory` | `inventory_product_id_key` | UNIQUE | One inventory record per product |
+| `inventory` | `idx_inventory_product_warehouse` | UNIQUE (`product_id`, `warehouse_id`) | One inventory record per product per warehouse |
 | `inventory` | `inventory_product_id_fkey` | FOREIGN KEY | Reference `products.id` |
 | `inventory_transactions` | `idx_inventory_transactions_product_created` | INDEX (`product_id`, `created_at` DESC) | Fast history queries |
 | `inventory_transactions` | `inventory_transactions_product_id_fkey` | FOREIGN KEY | Reference `products.id` |
@@ -332,6 +369,19 @@ type Category struct {
 }
 ```
 
+### Warehouse Model
+```go
+type Warehouse struct {
+    ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+    Code        string    `gorm:"type:text;unique;not null"`
+    Name        string    `gorm:"type:text;not null"`
+    Description *string   `gorm:"type:text"`
+    IsActive    bool      `gorm:"not null;default:true"`
+    CreatedAt   time.Time `gorm:"autoCreateTime"`
+    UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
+```
+
 ### Product Model
 ```go
 type Product struct {
@@ -352,27 +402,30 @@ type Product struct {
 ### Inventory Model
 ```go
 type Inventory struct {
-    ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-    ProductID uuid.UUID `gorm:"type:uuid;unique;not null"`
-    Product   Product   `gorm:"foreignKey:ProductID"`
-    Quantity  int       `gorm:"not null;default:0;check:quantity >= 0"`
-    UpdatedAt time.Time `gorm:"autoUpdateTime"`
+    ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+    ProductID   uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_inventory_product_warehouse"`
+    Product     Product   `gorm:"foreignKey:ProductID"`
+    WarehouseID uuid.UUID `gorm:"type:uuid;uniqueIndex:idx_inventory_product_warehouse"`
+    Quantity    int       `gorm:"not null;default:0;check:quantity >= 0"`
+    UpdatedAt   time.Time `gorm:"autoUpdateTime"`
 }
 ```
 
 ### InventoryTransaction Model
 ```go
 type InventoryTransaction struct {
-    ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-    ProductID uuid.UUID `gorm:"type:uuid;not null"`
-    Product   Product   `gorm:"foreignKey:ProductID"`
-    Type      string    `gorm:"type:text;not null;check:type IN ('IN', 'OUT')"`
-    Quantity  int       `gorm:"not null;check:quantity > 0"`
-    UnitCost  *float64  `gorm:"type:numeric(12,2)"`
-    Note      *string   `gorm:"type:text"`
-    UserID    *uuid.UUID `gorm:"type:uuid"`
-    User      *User     `gorm:"foreignKey:UserID"`
-    CreatedAt time.Time `gorm:"autoCreateTime"`
+    ID          uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+    ProductID   uuid.UUID  `gorm:"type:uuid;not null"`
+    Product     Product    `gorm:"foreignKey:ProductID"`
+    Type        string     `gorm:"type:text;not null;check:type IN ('IN', 'OUT')"`
+    Quantity    int        `gorm:"not null;check:quantity > 0"`
+    UnitCost    *float64   `gorm:"type:numeric(12,2)"`
+    Note        *string    `gorm:"type:text"`
+    UserID      *uuid.UUID `gorm:"type:uuid"`
+    User        *User      `gorm:"foreignKey:UserID"`
+    WarehouseID *uuid.UUID `gorm:"type:uuid"`
+    TransferID  *uuid.UUID `gorm:"type:uuid"`
+    CreatedAt   time.Time  `gorm:"autoCreateTime"`
 }
 ```
 

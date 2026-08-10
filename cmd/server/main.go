@@ -31,6 +31,7 @@ import (
 	"inventory/internal/shared/router"
 	"inventory/internal/shared/validator"
 	"inventory/internal/user"
+	"inventory/internal/warehouses"
 )
 
 // @title Inventra Inventory API
@@ -89,7 +90,12 @@ func main() {
 	authSvc := auth.NewService(authRepo, tm, cfg.BCryptCost)
 	authH := auth.NewHandler(authSvc, validator.New())
 	authH.SetAudit(auditSvc)
-	auth.RegisterRoutes(r.Group("/api/v1"), authH, tm, cfg.DemoMode)
+	auth.RegisterRoutes(r.Group("/api/v1"), authH, tm, cfg.DemoMode, auth.RateLimits{
+		LoginRPM:    cfg.LoginRateLimitRPM,
+		RefreshRPM:  cfg.RefreshRateLimitRPM,
+		RegisterRPM: cfg.RegisterRateLimitRPM,
+		DemoRPM:     cfg.DemoRateLimitRPM,
+	})
 
 	activitylog.RegisterRoutes(r.Group("/api/v1"), auditH, auth.NewTokenParser(tm))
 
@@ -103,6 +109,11 @@ func main() {
 	categoryH := category.NewHandler(categorySvc, validator.New())
 	categoryH.SetAudit(auditSvc)
 	category.RegisterRoutes(r.Group("/api/v1"), categoryH, auth.NewTokenParser(tm))
+
+	warehouseSvc := warehouses.NewService(warehouses.NewGORMRepository(db))
+	warehouseH := warehouses.NewHandler(warehouseSvc, validator.New())
+	warehouseH.SetAudit(auditSvc)
+	warehouses.RegisterRoutes(r.Group("/api/v1"), warehouseH, auth.NewTokenParser(tm))
 
 	productSvc := product.NewService(product.NewGORMRepository(db))
 	productH := product.NewHandler(productSvc, validator.New())

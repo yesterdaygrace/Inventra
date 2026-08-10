@@ -60,6 +60,8 @@ func statusFor(err error) (int, string) {
 		return http.StatusNotFound, err.Error()
 	case errors.Is(err, errors.ErrConflict):
 		return http.StatusConflict, err.Error()
+	case errors.Is(err, errors.ErrRateLimited):
+		return http.StatusTooManyRequests, err.Error()
 	default:
 		return http.StatusInternalServerError, "internal server error"
 	}

@@ -22,5 +22,6 @@ func RegisterRoutes(group *gin.RouterGroup, h *Handler, parser middleware.Claims
 	{
 		op.POST("/stock-in", h.StockIn)
 		op.POST("/stock-out", h.StockOut)
+		op.POST("/transfers", h.Transfer)
 	}
 }

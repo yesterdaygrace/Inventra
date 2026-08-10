@@ -11,9 +11,11 @@ import (
 
 	"inventory/internal/category"
 	"inventory/internal/product"
+	"inventory/internal/warehouses"
 )
 
 var testModels = []any{
+	&warehouses.Warehouse{},
 	&category.Category{},
 	&product.Product{},
 	&Inventory{},
@@ -32,6 +34,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		db.Exec("DROP TABLE IF EXISTS inventory CASCADE")
 		db.Exec("DROP TABLE IF EXISTS products CASCADE")
 		db.Exec("DROP TABLE IF EXISTS categories CASCADE")
+		db.Exec("DROP TABLE IF EXISTS warehouses CASCADE")
 		db.Exec("DROP TABLE IF EXISTS users CASCADE")
 		db.Exec("DROP TABLE IF EXISTS roles CASCADE")
 	})
@@ -93,6 +96,10 @@ func TestInventory_Create(t *testing.T) {
 	err := db.AutoMigrate(testModels...)
 	require.NoError(t, err)
 
+	wh := warehouses.Warehouse{Code: "WH1", Name: "Warehouse 1"}
+	err = db.Create(&wh).Error
+	require.NoError(t, err)
+
 	cat := category.Category{Name: "Electronics"}
 	err = db.Create(&cat).Error
 	require.NoError(t, err)
@@ -106,10 +113,10 @@ func TestInventory_Create(t *testing.T) {
 	err = db.Create(&prod).Error
 	require.NoError(t, err)
 
-	// When
 	inv := Inventory{
-		ProductID: prod.ID,
-		Quantity:  50,
+		ProductID:   prod.ID,
+		WarehouseID: wh.ID,
+		Quantity:    50,
 	}
 	err = db.Create(&inv).Error
 
@@ -117,11 +124,12 @@ func TestInventory_Create(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, inv.ID)
 	assert.Equal(t, prod.ID, inv.ProductID)
+	assert.Equal(t, wh.ID, inv.WarehouseID)
 	assert.Equal(t, 50, inv.Quantity)
 	assert.False(t, inv.UpdatedAt.IsZero())
 }
 
-func TestInventory_UniqueProductID(t *testing.T) {
+func TestInventory_UniqueProductWarehousePair(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DB test in short mode")
 	}
@@ -129,6 +137,14 @@ func TestInventory_UniqueProductID(t *testing.T) {
 	// Given
 	db := setupTestDB(t)
 	err := db.AutoMigrate(testModels...)
+	require.NoError(t, err)
+
+	wh := warehouses.Warehouse{Code: "WH1", Name: "Warehouse 1"}
+	err = db.Create(&wh).Error
+	require.NoError(t, err)
+
+	wh2 := warehouses.Warehouse{Code: "WH2", Name: "Warehouse 2"}
+	err = db.Create(&wh2).Error
 	require.NoError(t, err)
 
 	cat := category.Category{Name: "Electronics"}
@@ -144,23 +160,18 @@ func TestInventory_UniqueProductID(t *testing.T) {
 	err = db.Create(&prod).Error
 	require.NoError(t, err)
 
-	inv1 := Inventory{
-		ProductID: prod.ID,
-		Quantity:  10,
-	}
-	err = db.Create(&inv1).Error
+	// First row: same product in warehouse 1
+	err = db.Create(&Inventory{ProductID: prod.ID, WarehouseID: wh.ID, Quantity: 10}).Error
 	require.NoError(t, err)
 
-	// When: try to create another inventory record for same product
-	inv2 := Inventory{
-		ProductID: prod.ID,
-		Quantity:  20,
-	}
-	err = db.Create(&inv2).Error
+	// Same product in warehouse 2: allowed (different warehouse)
+	err = db.Create(&Inventory{ProductID: prod.ID, WarehouseID: wh2.ID, Quantity: 20}).Error
+	require.NoError(t, err, "same product in different warehouse should be allowed")
 
-	// Then: should fail due to unique constraint
+	// Same product in warehouse 1 again: conflict (composite unique violation)
+	err = db.Create(&Inventory{ProductID: prod.ID, WarehouseID: wh.ID, Quantity: 30}).Error
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "duplicate key")
+	assert.Contains(t, err.Error(), "duplicate key", "same (product, warehouse) pair must be unique")
 }
 
 func TestInventoryTransaction_Create(t *testing.T) {

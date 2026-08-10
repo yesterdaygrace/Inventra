@@ -35,6 +35,18 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Errorf("LogLevel default = %q, want info", cfg.LogLevel)
 	}
+	if cfg.LoginRateLimitRPM != 10 {
+		t.Errorf("LoginRateLimitRPM default = %d, want 10", cfg.LoginRateLimitRPM)
+	}
+	if cfg.RefreshRateLimitRPM != 30 {
+		t.Errorf("RefreshRateLimitRPM default = %d, want 30", cfg.RefreshRateLimitRPM)
+	}
+	if cfg.RegisterRateLimitRPM != 5 {
+		t.Errorf("RegisterRateLimitRPM default = %d, want 5", cfg.RegisterRateLimitRPM)
+	}
+	if cfg.DemoRateLimitRPM != 5 {
+		t.Errorf("DemoRateLimitRPM default = %d, want 5", cfg.DemoRateLimitRPM)
+	}
 }
 
 func TestLoadEnvOverrides(t *testing.T) {
@@ -45,6 +57,8 @@ func TestLoadEnvOverrides(t *testing.T) {
 	t.Setenv("LOW_STOCK_THRESHOLD", "5")
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("APP_ENV", "test")
+	t.Setenv("LOGIN_RATE_LIMIT_RPM", "25")
+	t.Setenv("REFRESH_RATE_LIMIT_RPM", "40")
 
 	cfg, err := Load()
 	if err != nil {
@@ -65,6 +79,12 @@ func TestLoadEnvOverrides(t *testing.T) {
 	}
 	if cfg.AppEnv != "test" {
 		t.Errorf("AppEnv = %q, want test (env override)", cfg.AppEnv)
+	}
+	if cfg.LoginRateLimitRPM != 25 {
+		t.Errorf("LoginRateLimitRPM = %d, want 25 (env override)", cfg.LoginRateLimitRPM)
+	}
+	if cfg.RefreshRateLimitRPM != 40 {
+		t.Errorf("RefreshRateLimitRPM = %d, want 40 (env override)", cfg.RefreshRateLimitRPM)
 	}
 }
 

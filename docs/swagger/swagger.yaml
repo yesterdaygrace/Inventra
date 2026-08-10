@@ -65,6 +65,8 @@ definitions:
     properties:
       description:
         type: string
+      is_active:
+        type: boolean
       name:
         type: string
     type: object
@@ -79,9 +81,30 @@ definitions:
         type: integer
       unit_cost:
         type: number
+      warehouse_id:
+        type: string
     required:
     - product_id
     - quantity
+    type: object
+  inventory.transferRequest:
+    properties:
+      from_warehouse_id:
+        type: string
+      note:
+        type: string
+      product_id:
+        type: string
+      quantity:
+        minimum: 1
+        type: integer
+      to_warehouse_id:
+        type: string
+    required:
+    - from_warehouse_id
+    - product_id
+    - quantity
+    - to_warehouse_id
     type: object
   product.createProductRequest:
     properties:
@@ -157,6 +180,31 @@ definitions:
   user.updateUserRequest:
     properties:
       email:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+    type: object
+  warehouses.createWarehouseRequest:
+    properties:
+      code:
+        minLength: 2
+        type: string
+      description:
+        type: string
+      name:
+        minLength: 2
+        type: string
+    required:
+    - code
+    - name
+    type: object
+  warehouses.updateWarehouseRequest:
+    properties:
+      code:
+        type: string
+      description:
         type: string
       is_active:
         type: boolean
@@ -658,6 +706,35 @@ paths:
       summary: Export categories as CSV
       tags:
       - categories
+  /dashboard/activity:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: Recent activity feed
+      tags:
+      - dashboard
   /dashboard/category-distribution:
     get:
       consumes:
@@ -949,6 +1026,49 @@ paths:
       security:
       - BearerAuth: []
       summary: List inventory movement history
+      tags:
+      - inventory
+  /inventory/transfers:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Transfer payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/inventory.transferRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Body'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Body'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Body'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: Transfer stock between warehouses
       tags:
       - inventory
   /products:
@@ -1472,6 +1592,211 @@ paths:
       summary: Assign a role to a user
       tags:
       - users
+  /warehouses:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Filter by name or code
+        in: query
+        name: search
+        type: string
+      - description: Filter by active state
+        enum:
+        - "true"
+        - "false"
+        in: query
+        name: is_active
+        type: string
+      - description: Sort field/direction
+        enum:
+        - name
+        - code
+        - created_at
+        - -name
+        - -code
+        - -created_at
+        in: query
+        name: sort
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Body'
+      summary: List warehouses
+      tags:
+      - warehouses
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Warehouse payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/warehouses.createWarehouseRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Body'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Body'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Body'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: Create a warehouse
+      tags:
+      - warehouses
+  /warehouses/{id}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Warehouse ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Body'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Body'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Body'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: Delete a warehouse
+      tags:
+      - warehouses
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: Warehouse ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Body'
+      summary: Get a warehouse
+      tags:
+      - warehouses
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Warehouse ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Warehouse update payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/warehouses.updateWarehouseRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Body'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.Body'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.Body'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: Update a warehouse
+      tags:
+      - warehouses
 schemes:
 - http
 - https

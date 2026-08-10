@@ -14,6 +14,7 @@ import (
 	"inventory/internal/category"
 	"inventory/internal/inventory"
 	"inventory/internal/product"
+	"inventory/internal/warehouses"
 )
 
 // demoCategories are the 5 categories seeded in runDemo.
@@ -55,6 +56,9 @@ var demoProducts = []struct {
 }
 
 func runDemo(db *gorm.DB) error {
+	if err := seedDefaultWarehouse(db); err != nil {
+		return err
+	}
 	if err := seedDemoCategories(db); err != nil {
 		return err
 	}
@@ -147,6 +151,12 @@ func seedDemoProducts(db *gorm.DB) error {
 }
 
 func seedDemoInventory(db *gorm.DB) error {
+	// Fetch the DEFAULT warehouse so new inventory rows reference it.
+	var defaultWH warehouses.Warehouse
+	if err := db.Where(warehouses.Warehouse{Code: "DEFAULT"}).First(&defaultWH).Error; err != nil {
+		return fmt.Errorf("find default warehouse: %w", err)
+	}
+
 	// Give fresh stock lines + OPENING transactions so the UI is non-empty.
 	var products []product.Product
 	if err := db.Find(&products).Error; err != nil {
@@ -154,23 +164,26 @@ func seedDemoInventory(db *gorm.DB) error {
 	}
 	for _, prod := range products {
 		var existing int64
-		if err := db.Model(&inventory.Inventory{}).Where("product_id = ?", prod.ID).Count(&existing).Error; err != nil {
+		if err := db.Model(&inventory.Inventory{}).
+			Where("product_id = ? AND warehouse_id = ?", prod.ID, defaultWH.ID).
+			Count(&existing).Error; err != nil {
 			return fmt.Errorf("check inventory %s: %w", prod.SKU, err)
 		}
 		if existing > 0 {
 			continue
 		}
-		inv := inventory.Inventory{ProductID: prod.ID, Quantity: 100}
+		inv := inventory.Inventory{ProductID: prod.ID, WarehouseID: defaultWH.ID, Quantity: 100}
 		if err := db.Create(&inv).Error; err != nil {
 			return fmt.Errorf("create inventory %s: %w", prod.SKU, err)
 		}
 		note := "Initial opening stock"
 		txn := inventory.InventoryTransaction{
-			ProductID: prod.ID,
-			Type:      "IN",
-			Quantity:  100,
-			UnitCost:  &prod.Price,
-			Note:      &note,
+			ProductID:   prod.ID,
+			Type:        "IN",
+			Quantity:    100,
+			UnitCost:    &prod.Price,
+			Note:        &note,
+			WarehouseID: &defaultWH.ID,
 		}
 		if err := db.Create(&txn).Error; err != nil {
 			return fmt.Errorf("create opening txn %s: %w", prod.SKU, err)
