@@ -2605,6 +2605,15 @@ const docTemplate = `{
                     "type": "integer",
                     "minimum": 1
                 },
+                "reason": {
+                    "type": "string"
+                },
+                "reference_id": {
+                    "type": "string"
+                },
+                "reference_type": {
+                    "type": "string"
+                },
                 "unit_cost": {
                     "type": "number"
                 },
@@ -2634,6 +2643,15 @@ const docTemplate = `{
                 "quantity": {
                     "type": "integer",
                     "minimum": 1
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "reference_id": {
+                    "type": "string"
+                },
+                "reference_type": {
+                    "type": "string"
                 },
                 "to_warehouse_id": {
                     "type": "string"
@@ -2702,6 +2720,9 @@ const docTemplate = `{
         "response.Body": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "string"
+                },
                 "data": {},
                 "message": {
                     "type": "string"

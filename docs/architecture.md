@@ -283,31 +283,27 @@ flowchart TD
 
 ## 5. Cross-Cutting Concerns
 
-### GORM AutoMigrate (No golang-migrate)
+### Versioned migrations (golang-migrate)
 
-Per decision D1, schema management uses GORM AutoMigrate:
+Per the fix-v2-gaps reconciliation (F1), production schema management uses
+**golang-migrate** with versioned SQL files in `migrations/` (applied via
+`make migrate-up`). The migration CLI lives at `cmd/migrate` and reads the
+same DB env vars as the server.
+
+GORM AutoMigrate remains available for local development only, gated by
+`DB_AUTOMIGRATE` (default `true`; set to `false` in production via
+docker-compose). The server runs AutoMigrate only when the flag is true:
 
 ```go
-// internal/shared/database/migrate.go
+// internal/shared/database/database.go
 func AutoMigrate(db *gorm.DB, models ...interface{}) error {
     return db.AutoMigrate(models...)
 }
 ```
 
-Migrations are registered in `internal/shared/database/models.go`:
-
-```go
-var BaseModels = []interface{}{
-    &auth.User{},
-    &auth.Role{},
-    &category.Category{},
-    &product.Product{},
-    &inventory.Inventory{},
-    &inventory.InventoryTransaction{},
-    &auth.RefreshToken{},
-    &activitylog.ActivityLog{},
-}
-```
+Models are still registered in `internal/shared/database/models.go` — the
+registry drives the dev AutoMigrate path and documents the schema that the
+`migrations/` baseline mirrors.
 
 ### Response Envelope
 

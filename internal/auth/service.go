@@ -40,10 +40,12 @@ type Repository interface {
 
 	FindRoleByName(ctx context.Context, name string) (*Role, error)
 	FindRoleByID(ctx context.Context, id uuid.UUID) (*Role, error)
+	PermissionsByRoleID(ctx context.Context, roleID uuid.UUID) ([]string, error)
 
 	CreateRefreshToken(ctx context.Context, t *RefreshToken) error
 	FindRefreshTokenByHash(ctx context.Context, hash string) (*RefreshToken, error)
 	UpdateRefreshToken(ctx context.Context, t *RefreshToken) error
+	RevokeFamily(ctx context.Context, userID, familyID uuid.UUID) error
 
 	CreateActivityLog(ctx context.Context, entry ActivityLogEntry) error
 }
@@ -74,6 +76,7 @@ type AuthResult struct {
 	ExpiresIn    int64
 	User         *User
 	RoleName     string
+	Permissions  []string
 }
 
 // Profile returns a user with its role name resolved.
@@ -143,7 +146,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*AuthResul
 		return nil, sharederr.ErrUnauthorized
 	}
 
-	res, err := s.issueTokens(ctx, user)
+	res, err := s.issueTokens(ctx, user, uuid.Nil)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +191,7 @@ func (s *Service) DemoLogin(ctx context.Context) (*AuthResult, error) {
 		return nil, fmt.Errorf("find demo user: %w", err)
 	}
 
-	res, err := s.issueTokens(ctx, user)
+	res, err := s.issueTokens(ctx, user, uuid.Nil)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +219,13 @@ func (s *Service) Refresh(ctx context.Context, rawToken string) (*AuthResult, er
 		return nil, fmt.Errorf("find refresh token: %w", err)
 	}
 	if rt.RevokedAt != nil {
+		// A revoked token being presented again is a reuse signal: the
+		// token was already rotated/logged out, so someone else holds it.
+		// Kill the whole family so the stolen token and any rotated
+		// sibling (the victim's live token) die together.
+		if ferr := s.repo.RevokeFamily(ctx, rt.UserID, rt.FamilyID); ferr != nil {
+			return nil, fmt.Errorf("revoke family on reuse: %w", ferr)
+		}
 		return nil, sharederr.ErrUnauthorized
 	}
 	if time.Now().After(rt.ExpiresAt) {
@@ -238,7 +248,7 @@ func (s *Service) Refresh(ctx context.Context, rawToken string) (*AuthResult, er
 	if err := s.repo.UpdateRefreshToken(ctx, rt); err != nil {
 		return nil, fmt.Errorf("revoke old refresh token: %w", err)
 	}
-	res, err := s.issueTokens(ctx, user)
+	res, err := s.issueTokens(ctx, user, rt.FamilyID)
 	if err != nil {
 		return nil, err
 	}
@@ -325,12 +335,19 @@ func (s *Service) RoleName(ctx context.Context, userID uuid.UUID) (string, error
 	return role.Name, nil
 }
 
-func (s *Service) issueTokens(ctx context.Context, user *User) (*AuthResult, error) {
+// issueTokens creates a refresh token in the given family (zero value = new
+// family) and returns the access/refresh pair. The access token carries the
+// role and its permission codes.
+func (s *Service) issueTokens(ctx context.Context, user *User, familyID uuid.UUID) (*AuthResult, error) {
 	role, err := s.repo.FindRoleByID(ctx, user.RoleID)
 	if err != nil {
 		return nil, fmt.Errorf("find role: %w", err)
 	}
-	access, err := s.tokens.SignAccessToken(user.ID, role.Name)
+	perms, err := s.repo.PermissionsByRoleID(ctx, role.ID)
+	if err != nil {
+		return nil, fmt.Errorf("load role permissions: %w", err)
+	}
+	access, err := s.tokens.SignAccessToken(user.ID, role.Name, perms)
 	if err != nil {
 		return nil, err
 	}
@@ -343,6 +360,9 @@ func (s *Service) issueTokens(ctx context.Context, user *User) (*AuthResult, err
 		TokenHash: hash,
 		ExpiresAt: expiresAt,
 	}
+	if familyID != uuid.Nil {
+		rt.FamilyID = familyID
+	}
 	if err := s.repo.CreateRefreshToken(ctx, rt); err != nil {
 		return nil, fmt.Errorf("persist refresh token: %w", err)
 	}
@@ -352,6 +372,7 @@ func (s *Service) issueTokens(ctx context.Context, user *User) (*AuthResult, err
 		ExpiresIn:    int64(s.tokens.accessTTL.Seconds()),
 		User:         user,
 		RoleName:     role.Name,
+		Permissions:  perms,
 	}, nil
 }
 

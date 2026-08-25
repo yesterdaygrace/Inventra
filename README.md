@@ -62,6 +62,7 @@ make run           # server on :8080 (DB_* env must match)
 | `make test-cover` | coverage report (HTML) |
 | `make run` | run the API server |
 | `make seed` / `make seed-demo` | seed base / demo data |
+| `make migrate-up` / `make migrate-down` / `make migrate-status` | versioned schema migrations (golang-migrate) |
 | `make docker-up` / `make docker-down` / `make docker-logs` | compose stack |
 | `make swagger` | regenerate OpenAPI docs into `docs/swagger/` |
 | `make pre-commit` | build + test + lint |
@@ -114,6 +115,10 @@ database, logger, validator). Entrypoint: `cmd/server/main.go`.
   access TTL + refresh token flow.
 - **Rotate the seeded admin password** and **set a strong `JWT_SECRET`** before
   any non-local deployment. See [docs/security.md](docs/security.md).
+- CI runs `govulncheck` (pinned `v1.1.4` for Go 1.24 compatibility) as a
+  non-blocking visibility scan — findings in dependency-only paths are
+  reviewed, not merge-blocking. For a blocking audit run
+  `go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...` locally.
 
 ## License
 

@@ -18,7 +18,7 @@ func init() {
 
 func TestHealthz(t *testing.T) {
 	cfg := &config.Config{}
-	r := New(cfg, zap.NewNop())
+	r := New(cfg, zap.NewNop(), nil)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -38,7 +38,7 @@ func TestHealthz(t *testing.T) {
 
 func TestHealthzHasRequestID(t *testing.T) {
 	cfg := &config.Config{}
-	r := New(cfg, zap.NewNop())
+	r := New(cfg, zap.NewNop(), nil)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -49,5 +49,40 @@ func TestHealthzHasRequestID(t *testing.T) {
 	}
 	if w.Header().Get("X-Content-Type-Options") == "" {
 		t.Error("secure headers middleware should run")
+	}
+}
+
+func TestReadyReturns503WhenDBNil(t *testing.T) {
+	cfg := &config.Config{}
+	r := New(cfg, zap.NewNop(), nil)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", w.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["status"] != "unavailable" {
+		t.Errorf("status field = %q, want unavailable", body["status"])
+	}
+}
+
+func TestRootShowsReadyLink(t *testing.T) {
+	cfg := &config.Config{}
+	r := New(cfg, zap.NewNop(), nil)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	var body map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body["ready"] != "/ready" {
+		t.Errorf("ready field = %q, want /ready", body["ready"])
 	}
 }

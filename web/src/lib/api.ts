@@ -30,10 +30,12 @@ const API_BASE = "/api/v1";
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -130,26 +132,28 @@ async function fetchEnvelope<T>(path: string, options: RequestInit = {}): Promis
 
   const isJson = res.headers.get("content-type")?.includes("application/json");
 
-  if (!res.ok) {
-    let message = res.statusText || "Request failed";
-    if (isJson) {
-      try {
-        const body = (await res.json()) as ApiEnvelope<unknown>;
-        if (body?.message) message = body.message;
-      } catch {
-        // fall through to default message
-      }
-    }
-    throw new ApiError(res.status, message);
-  }
+	if (!res.ok) {
+		let message = res.statusText || "Request failed";
+		let code: string | undefined;
+		if (isJson) {
+			try {
+				const body = (await res.json()) as ApiEnvelope<unknown>;
+				if (body?.error?.message) message = body.error.message;
+				if (body?.error?.code) code = body.error.code;
+			} catch {
+				// fall through to default message
+			}
+		}
+		throw new ApiError(res.status, message, code);
+	}
 
-  if (res.status === 204) return { success: true, data: undefined as unknown as T };
+	if (res.status === 204) return { data: undefined as unknown as T };
 
   if (isJson) {
     return (await res.json()) as ApiEnvelope<T>;
   }
 
-  return { success: true, data: (await res.text()) as unknown as T };
+  return { data: (await res.text()) as unknown as T };
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -161,7 +165,7 @@ async function requestList<T>(path: string, options: RequestInit = {}): Promise<
   const body = await fetchEnvelope<T[]>(path, options);
   return {
     items: body.data ?? [],
-    pagination: body.pagination ?? { page: 1, per_page: 0, total: 0, total_pages: 0 },
+    pagination: body.meta ?? { page: 1, per_page: 0, total: 0, total_pages: 0 },
   };
 }
 
@@ -190,18 +194,20 @@ export async function downloadCsv(path: string, filename: string): Promise<void>
     res = await fetch(`${API_BASE}${path}`, { headers });
   }
 
-  if (!res.ok) {
-    let message = res.statusText || "Export failed";
-    if (res.headers.get("content-type")?.includes("application/json")) {
-      try {
-        const body = (await res.json()) as ApiEnvelope<unknown>;
-        if (body?.message) message = body.message;
-      } catch {
-        // fall through to default message
-      }
-    }
-    throw new ApiError(res.status, message);
-  }
+	if (!res.ok) {
+		let message = res.statusText || "Export failed";
+		let code: string | undefined;
+		if (res.headers.get("content-type")?.includes("application/json")) {
+			try {
+				const body = (await res.json()) as ApiEnvelope<unknown>;
+				if (body?.error?.message) message = body.error.message;
+				if (body?.error?.code) code = body.error.code;
+			} catch {
+				// fall through to default message
+			}
+		}
+		throw new ApiError(res.status, message, code);
+	}
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -328,13 +334,13 @@ export const inventoryApi = {
   } = {}) => requestList<InventoryItem>(`/inventory${buildQuery(params)}`),
 
   stockIn: (input: StockMovementRequest) =>
-    request<StockMovementResponse>("/inventory/stock-in", {
+    request<StockMovementResponse>("/inventory/receive", {
       method: "POST",
       body: JSON.stringify(input),
     }),
 
   stockOut: (input: StockMovementRequest) =>
-    request<StockMovementResponse>("/inventory/stock-out", {
+    request<StockMovementResponse>("/inventory/issue", {
       method: "POST",
       body: JSON.stringify(input),
     }),
@@ -351,7 +357,7 @@ export const inventoryApi = {
     product_id?: string;
     type?: "IN" | "OUT";
     warehouse_id?: string;
-  } = {}) => requestList<Transaction>(`/inventory/transactions${buildQuery(params)}`),
+  } = {}) => requestList<Transaction>(`/inventory/ledger${buildQuery(params)}`),
 
   exportCsv: () =>
     downloadCsv("/inventory/export", `inventory-${new Date().toISOString().slice(0, 10)}.csv`),

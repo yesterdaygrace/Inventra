@@ -226,12 +226,15 @@ erDiagram
 | `product_id` | `uuid` | NO | | UNIQUE (`product_id, warehouse_id`), FOREIGN KEY (`products.id`) | Associated product |
 | `warehouse_id` | `uuid` | NO | | UNIQUE (`product_id, warehouse_id`) | Associated warehouse |
 | `quantity` | `integer` | NO | `0` | CHECK (`quantity` >= 0) | Current stock quantity in this warehouse |
+| `reserved_quantity` | `integer` | NO | `0` | CHECK (`reserved_quantity` >= 0) | Quantity reserved for pending operations (0 until the reservation flow lands) |
+| `version` | `integer` | NO | `0` | | Optimistic-lock version, bumped on every movement |
 | `updated_at` | `timestamp` | YES | `CURRENT_TIMESTAMP` | | Last stock update |
 
 **Notes**:
 - One row per (product, warehouse) pair — the same product can be tracked across multiple locations
 - The legacy single-warehouse unique constraint on `product_id` alone was replaced by the composite key; `cmd/seed` backfills existing rows to the `DEFAULT` warehouse
 - Quantity updated atomically via transactions
+- `version` increments on every stock-in/stock-out/transfer; `reserved_quantity` is always `0` until the reservation flow ships (fix.md §8 availability semantics only)
 
 ### 8. `inventory_transactions`
 
@@ -242,16 +245,20 @@ erDiagram
 | `type` | `text` | NO | | CHECK (`type` IN ('IN', 'OUT')) | Transaction type (IN=stock in, OUT=stock out) |
 | `quantity` | `integer` | NO | | CHECK (`quantity` > 0) | Quantity moved |
 | `unit_cost` | `numeric(12,2)` | YES | | | Unit cost at time of transaction |
-| `note` | `text` | YES | | | Optional note/reason |
+| `note` | `text` | YES | | | Optional note |
 | `user_id` | `uuid` | YES | | FOREIGN KEY (`users.id`) | User who performed transaction |
 | `warehouse_id` | `uuid` | YES | | | Warehouse where this movement occurred |
 | `transfer_id` | `uuid` | YES | | | Groups two rows of a warehouse transfer (OUT + IN) sharing one UUID |
+| `reference_type` | `text` | YES | | | Optional external reference type (e.g., "PURCHASE_ORDER") |
+| `reference_id` | `text` | YES | | | Optional external reference identifier (e.g., "PO-00123") |
+| `reason` | `text` | YES | | | Optional movement reason |
 | `created_at` | `timestamp` | NO | `CURRENT_TIMESTAMP` | | Creation timestamp |
 
 **Notes**:
 - Complete audit trail of all inventory movements
 - Two rows sharing the same `transfer_id` encode a warehouse-to-warehouse transfer (OUT from source, IN to destination)
 - `unit_cost` nullable for OUT transactions (use last IN cost or product price)
+- `reference_type`/`reference_id`/`reason` are NULL when the caller omits them — no behavior change for today's clients
 - Indexed for dashboard reporting and history queries
 
 ### 9. `activity_logs`
@@ -265,11 +272,19 @@ erDiagram
 | `entity_id` | `text` | YES | | | Entity identifier (UUID as text) |
 | `details` | `jsonb` | YES | | | Additional context as JSON |
 | `ip` | `text` | YES | | | Client IP address |
+| `before_data` | `jsonb` | YES | | | Pre-mutation state (e.g., `{"quantity":10}` on stock-in) |
+| `after_data` | `jsonb` | YES | | | Post-mutation state (e.g., `{"quantity":15}`) |
+| `reason` | `text` | YES | | | Optional mutation reason |
+| `user_agent` | `text` | YES | | | Request `User-Agent` header |
+| `request_id` | `text` | YES | | | Request ID (`X-Request-ID`, server-generated if absent) |
 | `created_at` | `timestamp` | NO | `CURRENT_TIMESTAMP` | | Creation timestamp |
 
 **Notes**:
 - System-wide audit log
 - `details` stores structured JSON for extensibility
+- `before_data`/`after_data` capture real pre/post quantities for stock operations
+- **Append-only**: the table has no update/delete path anywhere in the codebase;
+  the repository surface is pinned to `Create` + `List` only
 - Used for security monitoring and user activity tracking
 
 ## Low-Stock Semantics
@@ -444,13 +459,12 @@ type ActivityLog struct {
 }
 ```
 
-## AutoMigrate Implementation Note
+## Schema Management
 
-Schema is managed exclusively via GORM AutoMigrate:
-
-1. **No versioned migrations**: Schema changes via model updates + AutoMigrate
-2. **Seeds only**: `migrations/` contains seed SQL (`seed.sql`, `demo.sql`) for initial data
-3. **Production consideration**: AutoMigrate suitable for Phase 1; consider migration tooling for production
+Schema is owned by versioned SQL migrations in `migrations/`, applied via
+`make migrate-up` (golang-migrate). GORM AutoMigrate remains available for
+local development only (`DB_AUTOMIGRATE=true` default) — never in production
+(`DB_AUTOMIGRATE=false` via docker-compose).
 
 ## Validation
 

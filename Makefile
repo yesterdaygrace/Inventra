@@ -1,4 +1,4 @@
-.PHONY: dev build test test-cover lint run docker-up docker-down docker-logs seed seed-demo swagger coverage coverage-gate pre-commit
+.PHONY: dev build test test-cover lint run migrate-up migrate-down migrate-status docker-up docker-down docker-logs seed seed-demo swagger coverage coverage-gate pre-commit
 
 # Coverage gate: application code under internal/ (cmd/ entrypoints and
 # docs/swagger generated code are uncoveable boilerplate).
@@ -12,9 +12,10 @@ GO := GOTOOLCHAIN=$(GOTOOLCHAIN) go
 build:
 	$(GO) build ./...
 
-# Run tests
+# Run tests (serial -p 1: packages share a single Postgres on :5433 and
+# each test setup drops/creates tables; parallel execution races on this)
 test:
-	$(GO) test ./...
+	$(GO) test -p 1 ./...
 
 # Run tests with coverage
 test-cover:
@@ -50,6 +51,17 @@ docker-logs:
 
 # Database connection for seed targets (dockerized dev Postgres on 5433)
 SEED_DB := DB_HOST=localhost DB_PORT=5433 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=inventory DB_SSLMODE=disable JWT_SECRET=dev-only-seed-secret
+
+# Versioned schema migrations (golang-migrate). Production schema owner.
+migrate-up:
+	$(SEED_DB) $(GO) run ./cmd/migrate up
+
+# Roll back ALL migrations (empty schema). Use with care; see docs/deployment.md.
+migrate-down:
+	$(SEED_DB) $(GO) run ./cmd/migrate down
+
+migrate-status:
+	$(SEED_DB) $(GO) run ./cmd/migrate status
 
 # Seed base data (roles + default admin) idempotently
 seed: build

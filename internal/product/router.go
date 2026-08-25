@@ -18,10 +18,10 @@ func RegisterRoutes(group *gin.RouterGroup, h *Handler, parser middleware.Claims
 	prods.GET("/:id", h.Get)
 
 	admin := prods.Group("")
-	admin.Use(middleware.Auth(parser), middleware.RoleRequired("ADMIN"))
+	admin.Use(middleware.Auth(parser))
 	{
-		admin.POST("", h.Create)
-		admin.PUT("/:id", h.Update)
-		admin.DELETE("/:id", h.Delete)
+		admin.POST("", middleware.Permission("product.create"), h.Create)
+		admin.PUT("/:id", middleware.Permission("product.update"), h.Update)
+		admin.DELETE("/:id", middleware.Permission("product.delete"), h.Delete)
 	}
 }

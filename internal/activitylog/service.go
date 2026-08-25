@@ -52,6 +52,25 @@ func (s *Service) Record(e audit.Entry) {
 		EntityID:   e.EntityID,
 		Details:    details,
 		IP:         e.IP,
+		Reason:     e.Reason,
+		UserAgent:  e.UserAgent,
+		RequestID:  e.RequestID,
+	}
+	if e.BeforeData != nil {
+		if raw, err := json.Marshal(e.BeforeData); err == nil {
+			b := datatypes.JSON(raw)
+			l.BeforeData = &b
+		} else {
+			s.log.Warn("activitylog: marshal before_data", zap.Error(err))
+		}
+	}
+	if e.AfterData != nil {
+		if raw, err := json.Marshal(e.AfterData); err == nil {
+			a := datatypes.JSON(raw)
+			l.AfterData = &a
+		} else {
+			s.log.Warn("activitylog: marshal after_data", zap.Error(err))
+		}
 	}
 	if err := s.repo.Create(context.Background(), l); err != nil {
 		s.log.Warn("activitylog: record failed", zap.Error(err))

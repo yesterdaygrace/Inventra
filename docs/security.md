@@ -27,9 +27,14 @@
 
 - **Access token claims:** `sub` (user id), `role`, `exp` (15m), `iat`, `iss` (`inventory-api`), `aud` (`inventory`).
 - **Refresh token lifecycle:** on login a refresh token is generated, its SHA-256 hash stored in
-  `refresh_tokens` (columns: `token_hash` unique, `user_id` FK, `expires_at`, `revoked_at`, `created_at`).
-  On `/auth/refresh` the presented token is matched by hash, must be unexpired + unrevoked, then rotated.
-  On `/auth/logout` the refresh token is revoked.
+  `refresh_tokens` (columns: `token_hash` unique, `user_id` FK, `family_id` uuid, `expires_at`,
+  `revoked_at`, `created_at`). On `/auth/refresh` the presented token is matched by hash, must be
+  unexpired + unrevoked, then rotated. On `/auth/logout` the refresh token is revoked.
+- **Family reuse detection:** every rotation inherits its `family_id` from the token it replaced, so
+  all rotations of one login form a family. Presenting an **already-revoked** token on `/auth/refresh`
+  is treated as reuse (the token was rotated or logged out, so an attacker holds a copy): the entire
+  family is revoked — including the victim's live rotated token — forcing a fresh login. A second
+  simultaneous login (a different `family_id`) is never touched.
 - **JWT secret:** `JWT_SECRET` config is **required** at load time; `config.Load()` returns
   `MissingRequiredError` if absent. Production uses a strong random secret via env var.
 
@@ -59,9 +64,13 @@
 ## 2. Authorization (RBAC)
 
 - **Roles:** `ADMIN`, `STAFF` (enforced by `roles.name` check constraint and DTO validation).
-- **Matrix:** see `docs/api.md` §2. Every route declares its guard (public / any-auth / STAFF / ADMIN).
-- **Enforcement:** centralized JWT middleware resolves role; `RoleRequired(ROLE)` returns
-  `403 Forbidden` when the caller's role is insufficient.
+- **Permissions:** each role holds a set of permission codes (e.g. `product.create`, `inventory.stock_in`).
+  The compiled-in catalog lives in `auth.PermissionSetForRole`; the DB seed mirrors it via `permissions` + `role_permissions`.
+- **Matrix:** see `docs/api.md` §2. Every route declares its required permission code.
+- **Enforcement:** centralized JWT middleware resolves role and permissions;
+  `Permission(required_code)` returns `403 Forbidden` when the caller's claim-set
+  does not include the required code. `RoleRequired` is kept exported but unused
+  (deleted in a later cleanup).
 - Default registered users receive `STAFF`; only ADMIN can assign roles (`PUT /users/:id/role`).
 
 ---

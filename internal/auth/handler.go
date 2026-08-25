@@ -36,15 +36,16 @@ func (h *Handler) SetAudit(r audit.Recorder) {
 // and request IP. Details are nil-safe.
 func (h *Handler) record(c *gin.Context, action, entityID string, userID *uuid.UUID, details gin.H) {
 	eid := entityID
-	ip := c.ClientIP()
-	h.audit.Record(audit.Entry{
-		UserID:     userID,
+	e := audit.EntryFromContext(c, audit.Entry{
 		Action:     action,
 		EntityType: "user",
 		EntityID:   &eid,
 		Details:    details,
-		IP:         &ip,
 	})
+	if userID != nil {
+		e.UserID = userID
+	}
+	h.audit.Record(e)
 }
 
 type registerRequest struct {
@@ -100,7 +101,7 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 	role, _ := h.svc.RoleName(c.Request.Context(), user.ID)
 	h.record(c, "REGISTER", user.ID.String(), &user.ID, gin.H{"email": user.Email, "name": user.Name})
-	response.Created(c, userResponse(user, role))
+	response.Created(c, userResponse(user, role, nil))
 }
 
 // Login handles POST /auth/login.
@@ -284,7 +285,7 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 	}
 	role, _ := h.svc.RoleName(c.Request.Context(), user.ID)
 	h.record(c, "UPDATE_PROFILE", user.ID.String(), &userID, gin.H{"name": user.Name, "email": user.Email})
-	response.OK(c, userResponse(user, role))
+	response.OK(c, userResponse(user, role, middleware.PermissionsFromContext(c)))
 }
 
 // Me handles GET /auth/me.
@@ -307,24 +308,26 @@ func (h *Handler) Me(c *gin.Context) {
 		response.Error(c, err)
 		return
 	}
-	response.OK(c, userResponse(user, role))
+	response.OK(c, userResponse(user, role, middleware.PermissionsFromContext(c)))
 }
 
 type userEnvelope struct {
-	ID       uuid.UUID `json:"id"`
-	Name     string    `json:"name"`
-	Email    string    `json:"email"`
-	Role     string    `json:"role"`
-	IsActive bool      `json:"is_active"`
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	Email       string     `json:"email"`
+	Role        string     `json:"role"`
+	Permissions []string   `json:"permissions,omitempty"`
+	IsActive    bool       `json:"is_active"`
 }
 
-func userResponse(u *User, role string) userEnvelope {
+func userResponse(u *User, role string, perms []string) userEnvelope {
 	return userEnvelope{
-		ID:       u.ID,
-		Name:     u.Name,
-		Email:    u.Email,
-		Role:     role,
-		IsActive: u.IsActive,
+		ID:          u.ID,
+		Name:        u.Name,
+		Email:       u.Email,
+		Role:        role,
+		Permissions: perms,
+		IsActive:    u.IsActive,
 	}
 }
 
@@ -346,6 +349,6 @@ func loginResultResponse(res *AuthResult) loginEnvelope {
 		RefreshToken: res.RefreshToken,
 		TokenType:    "Bearer",
 		ExpiresIn:    res.ExpiresIn,
-		User:         userResponse(res.User, role),
+		User:         userResponse(res.User, role, res.Permissions),
 	}
 }

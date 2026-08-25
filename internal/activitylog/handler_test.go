@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
 
+	"inventory/internal/auth"
 	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/validator"
@@ -23,11 +24,15 @@ import (
 type fakeParser struct {
 	userID uuid.UUID
 	role   string
+	perms  []string
 	err    error
 }
 
-func (p fakeParser) ParseAccessToken(string) (uuid.UUID, string, error) {
-	return p.userID, p.role, p.err
+func (p fakeParser) ParseAccessToken(string) (uuid.UUID, string, []string, error) {
+	if p.perms != nil {
+		return p.userID, p.role, p.perms, p.err
+	}
+	return p.userID, p.role, auth.PermissionSetForRole(p.role), p.err
 }
 
 func setupEngine(repo Repository, parser middleware.ClaimsParser) *gin.Engine {
@@ -89,8 +94,8 @@ func TestListAdminOK(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decode(t, w)
-	assert.True(t, body["success"].(bool))
-	assert.NotNil(t, body["pagination"])
+	assert.Contains(t, body, "data")
+	assert.NotNil(t, body["meta"])
 	data := body["data"].([]any)
 	assert.Equal(t, "CREATE", data[0].(map[string]any)["action"])
 }
@@ -117,6 +122,35 @@ func TestListFromAfterToRejected(t *testing.T) {
 
 	w := doReq(t, r, "GET", "/api/v1/activity-logs?from=2026-01-02T00:00:00Z&to=2026-01-01T00:00:00Z", "tok")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestListEnrichedResponseFields(t *testing.T) {
+	m := new(mockRepo)
+	id := uuid.New()
+	uid := uuid.New()
+	before := datatypes.JSON(`{"quantity":10}`)
+	after := datatypes.JSON(`{"quantity":15}`)
+	reason := "restock"
+	ua := "qa-agent/1.0"
+	rid := "req-xyz"
+	u := &auth.User{ID: uid, Name: "Ada"}
+	m.On("List", mock.Anything, mock.Anything).Return([]*ActivityLog{{
+		ID: id, UserID: &uid, Action: "STOCK_IN", EntityType: "inventory",
+		User: u, BeforeData: &before, AfterData: &after,
+		Reason: &reason, UserAgent: &ua, RequestID: &rid,
+	}}, int64(1), nil)
+
+	r := setupEngine(m, fakeParser{role: "ADMIN"})
+	w := doReq(t, r, "GET", "/api/v1/activity-logs", "tok")
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	data := decode(t, w)["data"].([]any)[0].(map[string]any)
+	assert.Equal(t, "Ada", data["user_name"])
+	assert.Equal(t, "restock", data["reason"])
+	assert.Equal(t, "qa-agent/1.0", data["user_agent"])
+	assert.Equal(t, "req-xyz", data["request_id"])
+	afterData := data["after_data"].(map[string]any)
+	assert.Equal(t, float64(15), afterData["quantity"])
 }
 
 var _ Repository = (*mockRepo)(nil)

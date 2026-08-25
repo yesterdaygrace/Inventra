@@ -14,16 +14,17 @@ import (
 
 // fakeParser is a ClaimsParser stub for tests.
 type fakeParser struct {
-	uid  uuid.UUID
-	role string
-	err  error
+	uid   uuid.UUID
+	role  string
+	perms []string
+	err   error
 }
 
-func (f *fakeParser) ParseAccessToken(raw string) (uuid.UUID, string, error) {
+func (f *fakeParser) ParseAccessToken(raw string) (uuid.UUID, string, []string, error) {
 	if f.err != nil {
-		return uuid.Nil, "", f.err
+		return uuid.Nil, "", nil, f.err
 	}
-	return f.uid, f.role, nil
+	return f.uid, f.role, f.perms, nil
 }
 
 func setupProtectedEngine(p ClaimsParser, roles ...string) *gin.Engine {
@@ -107,12 +108,15 @@ func TestRoleRequiredBlocksStaffFromAdminRoute(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
 	var body struct {
-		Success bool   `json:"success"`
-		Message string `json:"message"`
+		Error *struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.False(t, body.Success)
-	assert.Equal(t, "forbidden", body.Message)
+	require.NotNil(t, body.Error)
+	assert.Equal(t, "FORBIDDEN", body.Error.Code)
+	assert.Equal(t, "forbidden", body.Error.Message)
 }
 
 func TestRoleRequiredAllowsEitherRole(t *testing.T) {

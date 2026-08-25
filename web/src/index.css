@@ -2,73 +2,135 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Fonts are loaded via <link> in index.html (Geist + Geist Mono). */
+
+/* Subtle grain overlay for non-flat surfaces */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    @apply antialiased;
+    font-family: "Geist", ui-sans, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    font-size: clamp(14px, 1rem + 0.2vw, 16px);
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    font-variation-settings: "opsz" 14;
+    /* Subtle noise texture — pointer-events-none via CSS, not DOM */
+    background-image:
+      radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.04) 0%, transparent 70%),
+      repeating-conic-gradient(
+        from 0deg,
+        transparent,
+        transparent 3px,
+        rgba(0, 0, 0, 0.01) 3px,
+        rgba(0, 0, 0, 0.01) 6px
+      );
+    background-attachment: fixed;
+  }
+  /* Override the noise on dark mode for subtlety */
+  .dark body {
+    background-image:
+      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.03) 0%, transparent 70%),
+      repeating-conic-gradient(
+        from 0deg,
+        transparent,
+        transparent 3px,
+        rgba(255, 255, 255, 0.008) 3px,
+        rgba(255, 255, 255, 0.008) 6px
+      );
+  }
+}
+
+/* --- Color palette ---
+   Single accent: a desaturated teal-green. No purple/blue AI gradient.
+   Grays carry a consistent cool undertone.
+*/
+
 :root {
   --radius: 0.5rem;
 
-  --background: oklch(0.97 0.006 145);
-  --foreground: oklch(0.24 0.02 160);
+  /* Cool gray foundation */
+  --background: oklch(0.96 0.006 240);
+  --foreground: oklch(0.22 0.015 240);
 
-  --card: oklch(0.99 0.004 145);
-  --card-foreground: oklch(0.24 0.02 160);
+  --card: oklch(0.97 0.005 240);
+  --card-foreground: oklch(0.22 0.015 240);
 
-  --primary: oklch(0.34 0.07 160);
-  --primary-foreground: oklch(0.98 0.005 145);
+  /* Single accent: desaturated teal */
+  --primary: oklch(0.42 0.12 195);
+  --primary-foreground: oklch(0.98 0.005 240);
 
-  --secondary: oklch(0.92 0.01 145);
-  --secondary-foreground: oklch(0.34 0.07 160);
+  --secondary: oklch(0.92 0.008 240);
+  --secondary-foreground: oklch(0.24 0.015 240);
 
-  --muted: oklch(0.94 0.008 145);
-  --muted-foreground: oklch(0.55 0.02 155);
+  --muted: oklch(0.93 0.008 240);
+  --muted-foreground: oklch(0.52 0.02 240);
 
-  --accent: oklch(0.9 0.03 160);
-  --accent-foreground: oklch(0.3 0.06 160);
+  --accent: oklch(0.88 0.04 195);
+  --accent-foreground: oklch(0.22 0.015 240);
 
   --destructive: oklch(0.55 0.19 25);
   --destructive-foreground: oklch(0.98 0.005 25);
 
-  --border: oklch(0.88 0.012 150);
-  --input: oklch(0.86 0.014 150);
-  --ring: oklch(0.5 0.09 160);
+  --border: oklch(0.86 0.006 240);
+  --input: oklch(0.84 0.006 240);
+  --ring: oklch(0.42 0.12 195);
 
-  /* design.md §10 status colors */
-  --health: oklch(0.55 0.14 150);
-  --info: oklch(0.55 0.12 240);
-  --warning: oklch(0.68 0.15 75);
+  /* Status colors — consistent with cool gray family */
+  --health: oklch(0.52 0.12 150);
+  --info: oklch(0.52 0.09 240);
+  --warning: oklch(0.68 0.14 75);
   --critical: oklch(0.55 0.19 25);
-  --archived: oklch(0.62 0.008 150);
+  --archived: oklch(0.62 0.008 240);
+
+  /* Surface depths using tinted shadows */
+  --shadow-sm: 0 1px 2px 0 hsl(240 30% 93%), 0 1px 4px 0 hsl(240 20% 90%);
+  --shadow: 0 2px 8px 0 hsl(240 30% 93%), 0 4px 12px 0 hsl(240 20% 88%);
+  --shadow-lg: 0 8px 24px 0 hsl(240 30% 90%), 0 4px 16px 0 hsl(240 20% 88%);
+  --shadow-xl: 0 16px 32px 0 hsl(240 30% 88%), 0 8px 24px 0 hsl(240 20% 85%);
 }
 
+/* Dark mode */
 .dark {
-  --background: oklch(0.19 0.015 160);
-  --foreground: oklch(0.93 0.01 145);
+  --background: oklch(0.12 0.012 240);
+  --foreground: oklch(0.93 0.008 240);
 
-  --card: oklch(0.22 0.015 160);
-  --card-foreground: oklch(0.93 0.01 145);
+  --card: oklch(0.17 0.012 240);
+  --card-foreground: oklch(0.93 0.008 240);
 
-  --primary: oklch(0.68 0.1 155);
-  --primary-foreground: oklch(0.16 0.02 160);
+  --primary: oklch(0.65 0.12 195);
+  --primary-foreground: oklch(0.18 0.012 240);
 
-  --secondary: oklch(0.28 0.02 160);
-  --secondary-foreground: oklch(0.9 0.01 145);
+  --secondary: oklch(0.24 0.008 240);
+  --secondary-foreground: oklch(0.88 0.008 240);
 
-  --muted: oklch(0.27 0.018 160);
-  --muted-foreground: oklch(0.68 0.02 155);
+  --muted: oklch(0.22 0.01 240);
+  --muted-foreground: oklch(0.68 0.015 240);
 
-  --accent: oklch(0.3 0.03 160);
-  --accent-foreground: oklch(0.95 0.005 145);
+  --accent: oklch(0.3 0.04 195);
+  --accent-foreground: oklch(0.93 0.008 240);
 
   --destructive: oklch(0.62 0.19 25);
   --destructive-foreground: oklch(0.98 0.005 25);
 
-  --border: oklch(0.32 0.02 160);
-  --input: oklch(0.35 0.02 160);
-  --ring: oklch(0.65 0.1 155);
+  --border: oklch(0.3 0.008 240);
+  --input: oklch(0.32 0.008 240);
+  --ring: oklch(0.65 0.12 195);
 
-  --health: oklch(0.7 0.15 150);
-  --info: oklch(0.68 0.13 240);
-  --warning: oklch(0.75 0.15 75);
+  --health: oklch(0.68 0.12 150);
+  --info: oklch(0.62 0.09 240);
+  --warning: oklch(0.75 0.14 75);
   --critical: oklch(0.65 0.19 25);
-  --archived: oklch(0.62 0.008 150);
+  --archived: oklch(0.62 0.008 240);
+
+  --shadow-sm: 0 1px 2px 0 hsl(240 40% 12%), 0 1px 4px 0 hsl(240 30% 10%);
+  --shadow: 0 2px 8px 0 hsl(240 40% 12%), 0 4px 12px 0 hsl(240 30% 10%);
+  --shadow-lg: 0 8px 24px 0 hsl(240 40% 10%), 0 4px 16px 0 hsl(240 30% 10%);
+  --shadow-xl: 0 16px 32px 0 hsl(240 40% 8%), 0 8px 24px 0 hsl(240 30% 8%);
 }
 
 @theme inline {
@@ -100,17 +162,129 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
 }
 
+/* --- Typography scale --- */
 @layer base {
+  h1 {
+    @apply text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl;
+  }
+  h2 {
+    @apply text-2xl font-semibold tracking-tight sm:text-3xl;
+  }
+  h3 {
+    @apply text-lg font-semibold tracking-tight sm:text-xl;
+  }
+  p {
+    @apply leading-relaxed;
+  }
+  /* Tabular-nums for all numeric content by default */
   * {
-    @apply border-border;
+    font-variant-numeric: tabular-nums;
   }
-  html {
-    @apply antialiased;
+  /* Balance text wrapping on headings */
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
   }
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+/* --- Smooth transitions on interactive elements --- */
+@layer base {
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    @apply transition-all duration-150 ease-out;
+  }
+}
+
+/* --- Motion system ---
+   Custom curves (Emil Kowalski / animations.dev principles):
+   - Entries: strong ease-out — starts fast, feels responsive
+   - Never animate from scale(0); start at 0.95 with opacity
+   - Exits faster than enters
+*/
+:root {
+  --ease-out-quad: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+@keyframes inventra-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes inventra-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes inventra-zoom-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+@keyframes inventra-zoom-out {
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+@keyframes inventra-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+@keyframes inventra-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Entrance/exit utilities — disabled entirely under reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .anim-fade-in {
+    animation: inventra-fade-in 200ms var(--ease-out-quad);
+  }
+  .anim-fade-out {
+    animation: inventra-fade-out 150ms ease forwards;
+  }
+  .anim-zoom-in {
+    animation: inventra-zoom-in 200ms var(--ease-out-quad);
+  }
+  .anim-zoom-out {
+    animation: inventra-zoom-out 150ms ease forwards;
+  }
+  .anim-toast-in {
+    animation: inventra-slide-in-right 250ms var(--ease-out-quad);
+  }
+
+  /* Staggered list entry — decorative only */
+  .rise-stagger > * {
+    animation: inventra-rise 300ms var(--ease-out-quad) backwards;
+  }
+  .rise-stagger > *:nth-child(2) {
+    animation-delay: 50ms;
+  }
+  .rise-stagger > *:nth-child(3) {
+    animation-delay: 100ms;
+  }
+  .rise-stagger > *:nth-child(4) {
+    animation-delay: 150ms;
+  }
+}
+
+/* --- Container max-width --- */
+@layer base {
+  .container {
+    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
   }
 }

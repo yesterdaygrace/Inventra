@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"inventory/internal/auth"
 	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/validator"
@@ -21,11 +22,15 @@ import (
 type fakeParser struct {
 	userID uuid.UUID
 	role   string
+	perms  []string
 	err    error
 }
 
-func (p fakeParser) ParseAccessToken(raw string) (uuid.UUID, string, error) {
-	return p.userID, p.role, p.err
+func (p fakeParser) ParseAccessToken(raw string) (uuid.UUID, string, []string, error) {
+	if p.perms != nil {
+		return p.userID, p.role, p.perms, p.err
+	}
+	return p.userID, p.role, auth.PermissionSetForRole(p.role), p.err
 }
 
 func setupUserEngine(repo Repository, parser middleware.ClaimsParser) *gin.Engine {
@@ -79,8 +84,8 @@ func TestListAdminOK(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decodeUser(t, w)
-	assert.True(t, body["success"].(bool))
-	assert.NotNil(t, body["pagination"])
+	assert.Contains(t, body, "data")
+	assert.NotNil(t, body["meta"])
 }
 
 func TestListRejectsStaff(t *testing.T) {

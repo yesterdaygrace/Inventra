@@ -11,12 +11,12 @@ import (
 // Every route is behind Auth + RoleRequired(ADMIN).
 func RegisterRoutes(group *gin.RouterGroup, h *Handler, parser middleware.ClaimsParser) {
 	users := group.Group("/users")
-	users.Use(middleware.Auth(parser), middleware.RoleRequired("ADMIN"))
+	users.Use(middleware.Auth(parser))
 	{
-		users.GET("", h.List)
-		users.GET("/:id", h.Get)
-		users.PUT("/:id", h.Update)
-		users.DELETE("/:id", h.Deactivate)
-		users.PUT("/:id/role", h.AssignRole)
+		users.GET("", middleware.Permission("user.manage"), h.List)
+		users.GET("/:id", middleware.Permission("user.manage"), h.Get)
+		users.PUT("/:id", middleware.Permission("user.manage"), h.Update)
+		users.DELETE("/:id", middleware.Permission("user.manage"), h.Deactivate)
+		users.PUT("/:id/role", middleware.Permission("user.manage"), h.AssignRole)
 	}
 }

@@ -10,7 +10,6 @@ import (
 	"inventory/internal/shared/dbutil"
 	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/export"
-	"inventory/internal/shared/middleware"
 	"inventory/internal/shared/response"
 	"inventory/internal/shared/validator"
 )
@@ -38,16 +37,12 @@ func (h *Handler) SetAudit(r audit.Recorder) {
 // and request IP. Details are nil-safe.
 func (h *Handler) record(c *gin.Context, action, entityID string, details gin.H) {
 	eid := entityID
-	uid := middleware.UserIDFromContext(c)
-	ip := c.ClientIP()
-	h.audit.Record(audit.Entry{
-		UserID:     &uid,
+	h.audit.Record(audit.EntryFromContext(c, audit.Entry{
 		Action:     action,
 		EntityType: "category",
 		EntityID:   &eid,
 		Details:    details,
-		IP:         &ip,
-	})
+	}))
 }
 
 type listCategoriesRequest struct {
@@ -231,11 +226,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	cat, err := h.svc.Update(c.Request.Context(), id, UpdateParams{
-		Name:        req.Name,
-		Description: req.Description,
-		IsActive:    req.IsActive,
-	})
+	cat, err := h.svc.Update(c.Request.Context(), id, UpdateParams(req))
 	if err != nil {
 		response.Error(c, err)
 		return

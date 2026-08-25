@@ -1,10 +1,9 @@
 export type Role = "ADMIN" | "STAFF";
 
 export interface ApiEnvelope<T> {
-  success: boolean;
-  message?: string;
   data: T;
-  pagination?: Pagination;
+  meta?: Pagination;
+  error?: ApiErrorPayload;
 }
 
 export interface Pagination {
@@ -15,7 +14,7 @@ export interface Pagination {
 }
 
 export interface ApiErrorPayload {
-  success: boolean;
+  code: string;
   message: string;
 }
 
@@ -26,6 +25,7 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  permissions?: string[];
   is_active: boolean;
   created_at: string;
   updated_at: string;

@@ -99,6 +99,9 @@ func run() error {
 	if err := seedRoles(db); err != nil {
 		return err
 	}
+	if err := seedPermissions(db); err != nil {
+		return err
+	}
 	if err := seedAdmin(db, cfg.BCryptCost); err != nil {
 		return err
 	}
@@ -125,10 +128,10 @@ func seedDefaultWarehouse(db *gorm.DB) error {
 		Update("warehouse_id", wh.ID); res.Error != nil {
 		return fmt.Errorf("backfill inventory warehouse_id: %w", res.Error)
 	}
-	if res := db.Model(&inventory.InventoryTransaction{}).
+	if res := db.Model(&inventory.LedgerEntry{}).
 		Where("warehouse_id IS NULL").
 		Update("warehouse_id", wh.ID); res.Error != nil {
-		return fmt.Errorf("backfill inventory_transactions warehouse_id: %w", res.Error)
+		return fmt.Errorf("backfill inventory_ledger warehouse_id: %w", res.Error)
 	}
 
 	fmt.Printf("seeded default warehouse %s (%s)\n", wh.Code, wh.ID)
@@ -137,17 +140,80 @@ func seedDefaultWarehouse(db *gorm.DB) error {
 
 func strPtr(s string) *string { return &s }
 
-// seedRoles inserts ADMIN and STAFF roles if they do not already exist.
+// seedRoles inserts the four built-in roles if they do not already exist.
 func seedRoles(db *gorm.DB) error {
 	roles := []struct{ name string }{
 		{name: "ADMIN"},
+		{name: "WAREHOUSE_MANAGER"},
 		{name: "STAFF"},
+		{name: "VIEWER"},
 	}
 	for _, r := range roles {
 		role := auth.Role{Name: r.name}
 		if err := db.FirstOrCreate(&role, auth.Role{Name: r.name}).Error; err != nil {
 			return fmt.Errorf("seed role %s: %w", r.name, err)
 		}
+	}
+	return nil
+}
+
+// catalogPermissions lists every permission code with a human description.
+// Keep in sync with auth.PermissionSetForRole so the seeded DB and the
+// compiled-in role sets can never diverge.
+func catalogPermissions() []auth.Permission {
+	return []auth.Permission{
+		{Code: "product.read", Description: "View products"},
+		{Code: "product.create", Description: "Create products"},
+		{Code: "product.update", Description: "Update products"},
+		{Code: "product.delete", Description: "Delete products"},
+		{Code: "category.read", Description: "View categories"},
+		{Code: "category.create", Description: "Create categories"},
+		{Code: "category.update", Description: "Update categories"},
+		{Code: "category.delete", Description: "Delete categories"},
+		{Code: "warehouse.read", Description: "View warehouses"},
+		{Code: "warehouse.manage", Description: "Create, update, and delete warehouses"},
+		{Code: "inventory.read", Description: "View inventory"},
+		{Code: "inventory.receive", Description: "Receive stock into warehouses"},
+		{Code: "inventory.issue", Description: "Issue stock out of warehouses"},
+		{Code: "inventory.adjust", Description: "Submit stock adjustments"},
+		{Code: "inventory.transfer", Description: "Transfer stock between warehouses"},
+		{Code: "user.manage", Description: "Manage users and role assignments"},
+		{Code: "audit.read", Description: "Read the audit log"},
+		{Code: "report.read", Description: "View reports"},
+		{Code: "report.export", Description: "Export reports to CSV"},
+		{Code: "dashboard.read", Description: "View dashboard"},
+	}
+}
+
+// seedPermissions upserts the permission catalog and rewrites each role's
+// grant set idempotently: permissions absent from the role's set are
+// removed, missing ones are inserted. Safe to run repeatedly.
+func seedPermissions(db *gorm.DB) error {
+	for _, perm := range catalogPermissions() {
+		var row auth.Permission
+		if err := db.Where(auth.Permission{Code: perm.Code}).FirstOrCreate(&row, perm).Error; err != nil {
+			return fmt.Errorf("seed permission %s: %w", perm.Code, err)
+		}
+	}
+	roles := []string{"ADMIN", "WAREHOUSE_MANAGER", "STAFF", "VIEWER"}
+	for _, name := range roles {
+		var role auth.Role
+		if err := db.Where(auth.Role{Name: name}).First(&role).Error; err != nil {
+			return fmt.Errorf("find role %s: %w", name, err)
+		}
+		codes := auth.PermissionSetForRole(name)
+		if err := db.Exec(`DELETE FROM role_permissions WHERE role_id = ?`, role.ID).Error; err != nil {
+			return fmt.Errorf("clear role_permissions %s: %w", name, err)
+		}
+		for _, code := range codes {
+			if err := db.Exec(`
+				INSERT INTO role_permissions (role_id, permission_id)
+				SELECT ?, id FROM permissions WHERE code = ?`,
+				role.ID, code).Error; err != nil {
+				return fmt.Errorf("grant %s %s: %w", name, code, err)
+			}
+		}
+		fmt.Printf("seeded %s permissions (%d)\n", name, len(codes))
 	}
 	return nil
 }

@@ -28,8 +28,8 @@ func (r *GORMRepository) StockSummary(ctx context.Context) (*StockSummary, error
 			COALESCE(SUM(
 				COALESCE(i.quantity, 0) *
 				COALESCE((
-					SELECT t.unit_cost FROM inventory_transactions t
-					WHERE t.product_id = p.id AND t.type = 'IN' AND t.unit_cost IS NOT NULL
+					SELECT t.unit_cost FROM inventory_ledger t
+					WHERE t.product_id = p.id AND t.transaction_type = 'RECEIVE' AND t.unit_cost IS NOT NULL
 					ORDER BY t.created_at DESC, t.id DESC LIMIT 1
 				), p.price)
 			), 0) AS total_value
@@ -71,8 +71,8 @@ func (r *GORMRepository) InventoryValue(ctx context.Context) (float64, error) {
 		SELECT COALESCE(SUM(
 			COALESCE(i.quantity, 0) *
 			COALESCE((
-				SELECT t.unit_cost FROM inventory_transactions t
-				WHERE t.product_id = p.id AND t.type = 'IN' AND t.unit_cost IS NOT NULL
+				SELECT t.unit_cost FROM inventory_ledger t
+				WHERE t.product_id = p.id AND t.transaction_type = 'RECEIVE' AND t.unit_cost IS NOT NULL
 				ORDER BY t.created_at DESC, t.id DESC LIMIT 1
 			), p.price)
 		), 0)
@@ -91,8 +91,8 @@ func (r *GORMRepository) lowStockItems(ctx context.Context) ([]*LowStockItem, er
 			COALESCE(i.quantity, 0) AS quantity, p.low_stock_threshold,
 			COALESCE(i.quantity, 0) *
 				COALESCE((
-					SELECT t.unit_cost FROM inventory_transactions t
-					WHERE t.product_id = p.id AND t.type = 'IN' AND t.unit_cost IS NOT NULL
+					SELECT t.unit_cost FROM inventory_ledger t
+					WHERE t.product_id = p.id AND t.transaction_type = 'RECEIVE' AND t.unit_cost IS NOT NULL
 					ORDER BY t.created_at DESC, t.id DESC LIMIT 1
 				), p.price) AS value
 		FROM products p

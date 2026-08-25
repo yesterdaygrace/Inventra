@@ -7,10 +7,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// Role represents a user role in the system (ADMIN or STAFF).
+// Role represents a user role in the system. The four built-in roles
+// match the PRD §41 model; the CHECK constraint is owned by migration
+// 000008 and mirrored here so AutoMigrate-created schemas agree.
 type Role struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	Name      string    `gorm:"type:text;unique;check:name IN ('ADMIN', 'STAFF')"`
+	Name      string    `gorm:"type:text;unique;check:name IN ('ADMIN', 'WAREHOUSE_MANAGER', 'STAFF', 'VIEWER')"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
 

@@ -1,5 +1,5 @@
-// Route registration for the report module. All report routes require an
-// authenticated user but are not role-restricted (read-model views).
+// Route registration for the report module. Summary views require
+// report.read; CSV exports require report.export.
 package report
 
 import (
@@ -13,8 +13,8 @@ func RegisterRoutes(group *gin.RouterGroup, h *Handler, parser middleware.Claims
 	rep := group.Group("/reports")
 	rep.Use(middleware.Auth(parser))
 	{
-		rep.GET("/stock-summary", h.Summary)
-		rep.GET("/export", h.Export)
-		rep.GET("/export-low-stock", h.LowStock)
+		rep.GET("/stock-summary", middleware.Permission("report.read"), h.Summary)
+		rep.GET("/export", middleware.Permission("report.export"), h.Export)
+		rep.GET("/export-low-stock", middleware.Permission("report.export"), h.LowStock)
 	}
 }
