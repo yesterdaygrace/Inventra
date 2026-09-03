@@ -142,7 +142,7 @@ The 17 tables are grouped into 7 domains for readability — the “7 Tables” 
 ### ERD 1/3 — Identity & Auth (Core)
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#ffffff","primaryTextColor":"#000000","primaryBorderColor":"#000000","lineColor":"#000000"}}}%%
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#000000","primaryTextColor":"#ffffff","primaryBorderColor":"#ffffff","lineColor":"#ffffff","secondaryColor":"#111111","tertiaryColor":"#222222","fontFamily":"monospace"}}}%%
 erDiagram
     roles {
         uuid id PK
@@ -179,7 +179,7 @@ erDiagram
 ### ERD 2/3 — Catalog & Stock
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#ffffff","primaryTextColor":"#000000","primaryBorderColor":"#000000","lineColor":"#000000"}}}%%
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#000000","primaryTextColor":"#ffffff","primaryBorderColor":"#ffffff","lineColor":"#ffffff","secondaryColor":"#111111","tertiaryColor":"#222222","fontFamily":"monospace"}}}%%
 erDiagram
     categories {
         uuid id PK
@@ -203,7 +203,7 @@ erDiagram
         int quantity "gte0"
         int reserved_quantity "gte0"
         int version
-        string UK "product-warehouse"
+        string unique_key "warehouse"
     }
     categories ||--o{ products : contains
     warehouses ||--o{ inventory : stocks
@@ -213,7 +213,7 @@ erDiagram
 ### ERD 3/3 — History, Reservations & Audit
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#ffffff","primaryTextColor":"#000000","primaryBorderColor":"#000000","lineColor":"#000000"}}}%%
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#000000","primaryTextColor":"#ffffff","primaryBorderColor":"#ffffff","lineColor":"#ffffff","secondaryColor":"#111111","tertiaryColor":"#222222","fontFamily":"monospace"}}}%%
 erDiagram
     inventory_ledger {
         uuid id PK
