@@ -19,6 +19,11 @@ type ActivityLog struct {
 	EntityID   *string         `gorm:"type:text"`
 	Details    *datatypes.JSON `gorm:"type:jsonb"`
 	IP         *string         `gorm:"type:text"`
+	BeforeData *datatypes.JSON `gorm:"type:jsonb"`
+	AfterData  *datatypes.JSON `gorm:"type:jsonb"`
+	Reason     *string         `gorm:"type:text"`
+	UserAgent  *string         `gorm:"type:text"`
+	RequestID  *string         `gorm:"type:text"`
 	CreatedAt  time.Time       `gorm:"autoCreateTime"`
 }
 

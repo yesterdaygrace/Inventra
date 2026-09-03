@@ -78,6 +78,48 @@ func TestRecordSchemaBrokenDetailsSwallowed(t *testing.T) {
 	m.AssertExpectations(t)
 }
 
+func TestRecordPersistsEnrichedFields(t *testing.T) {
+	m := new(mockRepo)
+	uid := uuid.New()
+	reason := "restock"
+	ua := "test-agent/1.0"
+	rid := "req-123"
+	m.On("Create", mock.Anything, mock.MatchedBy(func(l *ActivityLog) bool {
+		return l.UserID != nil && *l.UserID == uid &&
+			l.Action == "STOCK_IN" && l.EntityType == "inventory" &&
+			l.Reason != nil && *l.Reason == reason &&
+			l.UserAgent != nil && *l.UserAgent == ua &&
+			l.RequestID != nil && *l.RequestID == rid &&
+			l.BeforeData != nil && l.AfterData != nil
+	})).Return(nil)
+
+	newSvc(m).Record(audit.Entry{
+		UserID:     &uid,
+		Action:     "STOCK_IN",
+		EntityType: "inventory",
+		Reason:     &reason,
+		UserAgent:  &ua,
+		RequestID:  &rid,
+		BeforeData: map[string]int{"quantity": 10},
+		AfterData:  map[string]int{"quantity": 15},
+	})
+	m.AssertExpectations(t)
+}
+
+func TestRecordPartialFieldsNilTolerant(t *testing.T) {
+	m := new(mockRepo)
+	// Only the required fields are set; every optional field must stay nil
+	// and Record must not panic.
+	m.On("Create", mock.Anything, mock.MatchedBy(func(l *ActivityLog) bool {
+		return l.UserID == nil && l.Action == "LOGIN" && l.EntityType == "user" &&
+			l.Reason == nil && l.UserAgent == nil && l.RequestID == nil &&
+			l.BeforeData == nil && l.AfterData == nil
+	})).Return(nil)
+
+	newSvc(m).Record(audit.Entry{Action: "LOGIN", EntityType: "user"})
+	m.AssertExpectations(t)
+}
+
 func TestListDelegates(t *testing.T) {
 	m := new(mockRepo)
 	id := uuid.New()

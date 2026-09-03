@@ -33,6 +33,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { initials } from "@/lib/format";
+import { Logo } from "@/components/ui/logo";
 import { CommandPalette, type CommandItem } from "@/components/layout/command-palette";
 
 const NAV_ITEMS: CommandItem[] = [
@@ -73,20 +74,18 @@ export function AppLayout() {
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 hidden border-r border-border bg-card transition-all duration-200 xl:flex xl:flex-col",
-          sidebarCollapsed ? "xl:w-16" : "xl:w-60",
+          "fixed inset-y-0 left-0 z-40 hidden border-r bg-card transition-all duration-200 xl:flex xl:flex-col",
+          sidebarCollapsed ? "xl:w-16" : "xl:w-64",
         )}
       >
-        <div className={cn("flex h-14 items-center gap-2 border-b border-border px-4", sidebarCollapsed && "xl:justify-center xl:px-0")}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-            I
-          </div>
+        <div className={cn("flex h-14 items-center gap-3 border-b border-border px-4", sidebarCollapsed && "xl:justify-center xl:px-0")}>
+          <Logo className="h-8 w-8" />
           {!sidebarCollapsed && (
-            <span className="truncate text-base font-semibold tracking-tight">Inventra</span>
+            <span className="truncate text-xl font-semibold tracking-tight">Inventra</span>
           )}
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+        <nav className="flex-1 space-y-1 overflow-y-auto p-2">
           {visibleNav.map((item) => (
             <SidebarLink key={item.to} item={item} collapsed={sidebarCollapsed} onNavigate={() => setMobileOpen(false)} />
           ))}
@@ -102,13 +101,11 @@ export function AppLayout() {
         <div className="fixed inset-0 z-50 xl:hidden">
           <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
           <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-card shadow-xl">
-            <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
-                I
-              </div>
-              <span className="text-base font-semibold tracking-tight">Inventra</span>
+            <div className="flex h-14 items-center gap-3 border-b border-border px-4">
+              <Logo className="h-8 w-8" />
+              <span className="text-xl font-semibold tracking-tight">Inventra</span>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+            <nav className="flex-1 space-y-1 overflow-y-auto p-2">
               {visibleNav.map((item) => (
                 <SidebarLink key={item.to} item={item} collapsed={false} onNavigate={() => setMobileOpen(false)} />
               ))}
@@ -121,8 +118,8 @@ export function AppLayout() {
       )}
 
       {/* Main column */}
-      <div className={cn("flex min-h-screen flex-col transition-all duration-200", sidebarCollapsed ? "xl:pl-16" : "xl:pl-60")}>
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur">
+      <div className={cn("flex min-h-screen flex-col transition-all duration-200", sidebarCollapsed ? "xl:pl-16" : "xl:pl-64")}>
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <Button
             variant="ghost"
             size="icon"
@@ -142,11 +139,14 @@ export function AppLayout() {
             <PanelLeft className="h-5 w-5" />
           </Button>
 
-          <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
+          <nav
+            aria-label="Breadcrumb"
+            className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex"
+          >
             <span className="font-medium text-foreground">Inventra</span>
             <span>/</span>
             <PageTitle items={visibleNav} />
-          </div>
+          </nav>
 
           <div className="ml-auto flex items-center gap-1">
             <Button
@@ -185,7 +185,9 @@ export function AppLayout() {
         </header>
 
         <main className="flex-1 p-4 md:p-6 lg:p-8">
-          <Outlet />
+          <div className="mx-auto w-full max-w-7xl">
+            <Outlet />
+          </div>
         </main>
       </div>
 
@@ -211,11 +213,11 @@ function SidebarLink({
       title={collapsed ? item.label : undefined}
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+          "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 ease-out",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           isActive
-            ? "bg-accent font-medium text-accent-foreground"
-            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+            ? "bg-primary/10 font-medium text-primary"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground",
           collapsed && "xl:justify-center xl:px-0",
         )
       }
@@ -254,7 +256,7 @@ function UserMenu({ collapsed, mobile }: { collapsed: boolean; mobile?: boolean 
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{user.name}</span>
               <span className="block truncate text-xs text-muted-foreground">
-                {user.role === "ADMIN" ? "Administrator" : "Staff"}
+                {roleLabel(user.role)}
               </span>
             </span>
           )}
@@ -282,3 +284,19 @@ function UserMenu({ collapsed, mobile }: { collapsed: boolean; mobile?: boolean 
 }
 
 export type { LucideIcon };
+
+// Human-readable names for the four built-in roles (PRD §41).
+function roleLabel(role: string): string {
+  switch (role) {
+    case "ADMIN":
+      return "Administrator";
+    case "WAREHOUSE_MANAGER":
+      return "Warehouse Manager";
+    case "STAFF":
+      return "Staff";
+    case "VIEWER":
+      return "Viewer";
+    default:
+      return role;
+  }
+}

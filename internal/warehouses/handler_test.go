@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"inventory/internal/auth"
 	"inventory/internal/shared/audit"
 	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/middleware"
@@ -22,11 +23,15 @@ import (
 type fakeParser struct {
 	userID uuid.UUID
 	role   string
+	perms  []string
 	err    error
 }
 
-func (p fakeParser) ParseAccessToken(string) (uuid.UUID, string, error) {
-	return p.userID, p.role, p.err
+func (p fakeParser) ParseAccessToken(string) (uuid.UUID, string, []string, error) {
+	if p.perms != nil {
+		return p.userID, p.role, p.perms, p.err
+	}
+	return p.userID, p.role, auth.PermissionSetForRole(p.role), p.err
 }
 
 func setupWarehouseEngine(repo Repository, parser middleware.ClaimsParser) *gin.Engine {
@@ -68,8 +73,8 @@ func TestWarehouseListPublicPaginated(t *testing.T) {
 	w := doReq(t, r, "GET", "/api/v1/warehouses?search=alp", "", "tok")
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decodeBody(t, w)
-	assert.True(t, body["success"].(bool))
-	assert.NotNil(t, body["pagination"])
+	assert.Contains(t, body, "data")
+	assert.NotNil(t, body["meta"])
 }
 
 func TestWarehouseListIsPublicRead(t *testing.T) {
@@ -177,7 +182,7 @@ func TestWarehouseDeleteAdminOK(t *testing.T) {
 	w := doReq(t, r, "DELETE", "/api/v1/warehouses/"+id.String(), "", "tok")
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "warehouse deactivated", decodeBody(t, w)["message"])
+	assert.Equal(t, map[string]any{"message": "warehouse deactivated"}, decodeBody(t, w)["data"])
 }
 
 func TestWarehouseDeleteConflictWhenReferenced(t *testing.T) {

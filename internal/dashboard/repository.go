@@ -50,8 +50,8 @@ func (r *GORMRepository) InventoryValue(ctx context.Context) (float64, error) {
 		SELECT COALESCE(SUM(
 			COALESCE(i.quantity, 0) *
 			COALESCE((
-				SELECT t.unit_cost FROM inventory_transactions t
-				WHERE t.product_id = p.id AND t.type = 'IN' AND t.unit_cost IS NOT NULL
+				SELECT t.unit_cost FROM inventory_ledger t
+				WHERE t.product_id = p.id AND t.transaction_type = 'RECEIVE' AND t.unit_cost IS NOT NULL
 				ORDER BY t.created_at DESC, t.id DESC LIMIT 1
 			), p.price)
 		), 0)
@@ -115,9 +115,9 @@ func (r *GORMRepository) TopSellers(ctx context.Context, limit int) ([]*TopSelle
 	var items []*TopSeller
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT t.product_id, p.sku, p.name, SUM(t.quantity) AS units_sold
-		FROM inventory_transactions t
+		FROM inventory_ledger t
 		JOIN products p ON p.id = t.product_id
-		WHERE t.type = 'OUT'
+		WHERE t.transaction_type = 'ISSUE'
 		GROUP BY t.product_id, p.sku, p.name
 		ORDER BY units_sold DESC, p.name ASC
 		LIMIT ?`, limit).Scan(&items).Error
@@ -129,9 +129,9 @@ func (r *GORMRepository) InventoryMovement(ctx context.Context, since time.Time)
 	var items []*DayMovement
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT to_char(created_at, 'YYYY-MM-DD') AS day,
-			COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END), 0) AS stock_in,
-			COALESCE(SUM(CASE WHEN type = 'OUT' THEN quantity ELSE 0 END), 0) AS stock_out
-		FROM inventory_transactions
+			COALESCE(SUM(CASE WHEN transaction_type = 'RECEIVE' THEN quantity ELSE 0 END), 0) AS stock_in,
+			COALESCE(SUM(CASE WHEN transaction_type = 'ISSUE' THEN quantity ELSE 0 END), 0) AS stock_out
+		FROM inventory_ledger
 		WHERE created_at >= ?
 		GROUP BY to_char(created_at, 'YYYY-MM-DD')
 		ORDER BY day ASC`, since).Scan(&items).Error

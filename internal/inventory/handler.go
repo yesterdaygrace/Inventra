@@ -4,6 +4,7 @@
 package inventory
 
 import (
+	"time"
 	"strconv"
 	"strings"
 
@@ -44,22 +45,6 @@ func (h *Handler) SetLogger(l *zap.Logger) {
 	}
 }
 
-// record captures an audit event for a mutation, attaching the acting user
-// and request IP. Details are nil-safe.
-func (h *Handler) record(c *gin.Context, action, entityID string, details gin.H) {
-	eid := entityID
-	uid := middleware.UserIDFromContext(c)
-	ip := c.ClientIP()
-	h.audit.Record(audit.Entry{
-		UserID:     &uid,
-		Action:     action,
-		EntityType: "inventory",
-		EntityID:   &eid,
-		Details:    details,
-		IP:         &ip,
-	})
-}
-
 type listInventoryRequest struct {
 	ProductID   string `form:"product_id"`
 	Search      string `form:"search"`
@@ -70,11 +55,14 @@ type listInventoryRequest struct {
 }
 
 type stockRequest struct {
-	ProductID   string   `json:"product_id" validate:"required"`
-	Quantity    int      `json:"quantity" validate:"required,min=1"`
-	UnitCost    *float64 `json:"unit_cost"`
-	Note        *string  `json:"note"`
-	WarehouseID *string  `json:"warehouse_id"`
+	ProductID     string   `json:"product_id" validate:"required"`
+	Quantity      int      `json:"quantity" validate:"required,min=1"`
+	UnitCost      *float64 `json:"unit_cost"`
+	Note          *string  `json:"note"`
+	WarehouseID   *string  `json:"warehouse_id"`
+	ReferenceType *string  `json:"reference_type"`
+	ReferenceID   *string  `json:"reference_id"`
+	Reason        *string  `json:"reason"`
 }
 
 type transferRequest struct {
@@ -83,6 +71,9 @@ type transferRequest struct {
 	FromWarehouseID string  `json:"from_warehouse_id" validate:"required"`
 	ToWarehouseID   string  `json:"to_warehouse_id" validate:"required"`
 	Note            *string `json:"note"`
+	ReferenceType   *string `json:"reference_type"`
+	ReferenceID     *string `json:"reference_id"`
+	Reason          *string `json:"reason"`
 }
 
 type transactionsRequest struct {
@@ -94,26 +85,34 @@ type transactionsRequest struct {
 }
 
 type inventoryEnvelope struct {
-	ProductID   uuid.UUID `json:"product_id"`
-	ProductSKU  string    `json:"product_sku"`
-	ProductName string    `json:"product_name"`
-	Quantity    int       `json:"quantity"`
-	UpdatedAt   string    `json:"updated_at"`
+	ProductID        uuid.UUID `json:"product_id"`
+	ProductSKU       string    `json:"product_sku"`
+	ProductName      string    `json:"product_name"`
+	Quantity         int       `json:"quantity"`
+	ReservedQuantity int       `json:"reserved_quantity"`
+	Version          int       `json:"version"`
+	UpdatedAt        string    `json:"updated_at"`
 }
 
-type transactionEnvelope struct {
-	ID          uuid.UUID  `json:"id"`
-	ProductID   uuid.UUID  `json:"product_id"`
-	ProductSKU  string     `json:"product_sku"`
-	ProductName string     `json:"product_name"`
-	Type        string     `json:"type"`
-	Quantity    int        `json:"quantity"`
-	UnitCost    *float64   `json:"unit_cost,omitempty"`
-	Note        *string    `json:"note,omitempty"`
-	UserID      *uuid.UUID `json:"user_id,omitempty"`
-	WarehouseID *uuid.UUID `json:"warehouse_id,omitempty"`
-	TransferID  *uuid.UUID `json:"transfer_id,omitempty"`
-	CreatedAt   string     `json:"created_at"`
+type ledgerEnvelope struct {
+	ID              uuid.UUID  `json:"id"`
+	ProductID       uuid.UUID  `json:"product_id"`
+	ProductSKU      string     `json:"product_sku"`
+	ProductName     string     `json:"product_name"`
+	TransactionType string     `json:"transaction_type"`
+	Direction       string     `json:"direction"`
+	Quantity        int        `json:"quantity"`
+	Balance         int        `json:"balance"`
+	UnitCost        *float64   `json:"unit_cost,omitempty"`
+	TotalCost       *float64   `json:"total_cost,omitempty"`
+	Note            *string    `json:"note,omitempty"`
+	UserID          *uuid.UUID `json:"performed_by,omitempty"`
+	WarehouseID     uuid.UUID  `json:"warehouse_id"`
+	TransferID      *uuid.UUID `json:"transfer_id,omitempty"`
+	ReferenceType   *string    `json:"reference_type,omitempty"`
+	ReferenceID     *string    `json:"reference_id,omitempty"`
+	Reason          *string    `json:"reason,omitempty"`
+	CreatedAt       string     `json:"created_at"`
 }
 
 func parseUUID(raw string) (uuid.UUID, bool) {
@@ -178,11 +177,13 @@ func (h *Handler) List(c *gin.Context) {
 	items := make([]inventoryEnvelope, 0, len(views))
 	for _, v := range views {
 		items = append(items, inventoryEnvelope{
-			ProductID:   v.ProductID,
-			ProductSKU:  v.ProductSKU,
-			ProductName: v.ProductName,
-			Quantity:    v.Quantity,
-			UpdatedAt:   v.UpdatedAt,
+			ProductID:        v.ProductID,
+			ProductSKU:       v.ProductSKU,
+			ProductName:      v.ProductName,
+			Quantity:         v.Quantity,
+			ReservedQuantity: v.ReservedQuantity,
+			Version:          v.Version,
+			UpdatedAt:        v.UpdatedAt,
 		})
 	}
 
@@ -194,39 +195,39 @@ func (h *Handler) List(c *gin.Context) {
 	})
 }
 
-// StockIn handles POST /inventory/stock-in.
+// Receive handles POST /inventory/receive.
 // @Tags inventory
-// @Summary Record stock-in movement
+// @Summary Receive stock into a warehouse
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param body body stockRequest true "Stock-in payload"
+// @Param body body stockRequest true "Receive payload"
 // @Success 200 {object} response.Body
 // @Failure 400 {object} response.Body
 // @Failure 401 {object} response.Body
 // @Failure 403 {object} response.Body
 // @Failure 404 {object} response.Body
-// @Router /inventory/stock-in [post]
-func (h *Handler) StockIn(c *gin.Context) {
-	h.mutate(c, "IN")
+// @Router /inventory/receive [post]
+func (h *Handler) Receive(c *gin.Context) {
+	h.mutate(c, LedgerReceive)
 }
 
-// StockOut handles POST /inventory/stock-out.
+// Issue handles POST /inventory/issue.
 // @Tags inventory
-// @Summary Record stock-out movement
+// @Summary Issue stock out of a warehouse
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param body body stockRequest true "Stock-out payload"
+// @Param body body stockRequest true "Issue payload"
 // @Success 200 {object} response.Body
 // @Failure 400 {object} response.Body
 // @Failure 401 {object} response.Body
 // @Failure 403 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Failure 409 {object} response.Body
-// @Router /inventory/stock-out [post]
-func (h *Handler) StockOut(c *gin.Context) {
-	h.mutate(c, "OUT")
+// @Router /inventory/issue [post]
+func (h *Handler) Issue(c *gin.Context) {
+	h.mutate(c, LedgerIssue)
 }
 
 func (h *Handler) mutate(c *gin.Context, kind string) {
@@ -260,25 +261,31 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 
 	var inv *Inventory
 	var err error
-	if kind == "IN" {
-		inv, err = h.svc.StockIn(c.Request.Context(), Movement{
-			ProductID:   pid,
-			Type:        "IN",
-			Quantity:    req.Quantity,
-			UnitCost:    req.UnitCost,
-			Note:        req.Note,
-			UserID:      &uid,
-			WarehouseID: whID,
+	if kind == LedgerReceive {
+		inv, err = h.svc.Receive(c.Request.Context(), Movement{
+			ProductID:     pid,
+			Type:          LedgerReceive,
+			Quantity:      req.Quantity,
+			UnitCost:      req.UnitCost,
+			Note:          req.Note,
+			UserID:        &uid,
+			WarehouseID:   whID,
+			ReferenceType: req.ReferenceType,
+			ReferenceID:   req.ReferenceID,
+			Reason:        req.Reason,
 		})
 	} else {
-		inv, err = h.svc.StockOut(c.Request.Context(), Movement{
-			ProductID:   pid,
-			Type:        "OUT",
-			Quantity:    req.Quantity,
-			UnitCost:    req.UnitCost,
-			Note:        req.Note,
-			UserID:      &uid,
-			WarehouseID: whID,
+		inv, err = h.svc.Issue(c.Request.Context(), Movement{
+			ProductID:     pid,
+			Type:          LedgerIssue,
+			Quantity:      req.Quantity,
+			UnitCost:      req.UnitCost,
+			Note:          req.Note,
+			UserID:        &uid,
+			WarehouseID:   whID,
+			ReferenceType: req.ReferenceType,
+			ReferenceID:   req.ReferenceID,
+			Reason:        req.Reason,
 		})
 	}
 	if err != nil {
@@ -287,14 +294,34 @@ func (h *Handler) mutate(c *gin.Context, kind string) {
 	}
 
 	details := gin.H{
-		"product_id": pid.String(),
-		"quantity":   req.Quantity,
-		"note":       noteOrNil(req.Note),
+		"product_id":       pid.String(),
+		"quantity":         req.Quantity,
+		"transaction_type": kind,
+		"note":             noteOrNil(req.Note),
 	}
 	if whID != nil {
 		details["warehouse_id"] = whID.String()
 	}
-	h.record(c, "STOCK_"+kind, pid.String(), details)
+	if req.ReferenceType != nil {
+		details["reference_type"] = *req.ReferenceType
+	}
+	if req.ReferenceID != nil {
+		details["reference_id"] = *req.ReferenceID
+	}
+
+	before := inv.Quantity - req.Quantity
+	if kind == LedgerIssue {
+		before = inv.Quantity + req.Quantity
+	}
+	h.audit.Record(audit.EntryFromContext(c, audit.Entry{
+		Action:     "INVENTORY_" + kind,
+		EntityType: "inventory",
+		EntityID:   &[]string{pid.String()}[0],
+		Details:    details,
+		Reason:     req.Reason,
+		BeforeData: gin.H{"quantity": before},
+		AfterData:  gin.H{"quantity": inv.Quantity},
+	}))
 	response.OK(c, gin.H{
 		"product_id": inv.ProductID,
 		"quantity":   inv.Quantity,
@@ -353,19 +380,32 @@ func (h *Handler) Transfer(c *gin.Context) {
 		Quantity:        req.Quantity,
 		Note:            req.Note,
 		UserID:          &uid,
+		ReferenceType:   req.ReferenceType,
+		ReferenceID:     req.ReferenceID,
+		Reason:          req.Reason,
 	})
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	h.record(c, "TRANSFER", pid.String(), gin.H{
+	details := gin.H{
 		"product_id":        pid.String(),
 		"from_warehouse_id": from.String(),
 		"to_warehouse_id":   to.String(),
 		"quantity":          req.Quantity,
 		"note":              noteOrNil(req.Note),
-	})
+	}
+	before := inv.Quantity - req.Quantity
+	h.audit.Record(audit.EntryFromContext(c, audit.Entry{
+		Action:     "TRANSFER",
+		EntityType: "inventory",
+		EntityID:   &[]string{pid.String()}[0],
+		Details:    details,
+		Reason:     req.Reason,
+		BeforeData: gin.H{"destination_quantity": before},
+		AfterData:  gin.H{"destination_quantity": inv.Quantity},
+	}))
 	response.OK(c, gin.H{
 		"product_id": inv.ProductID,
 		"quantity":   inv.Quantity,
@@ -380,28 +420,30 @@ func noteOrNil(n *string) any {
 	return *n
 }
 
-// Transactions handles GET /inventory/transactions — paginated history.
+// Ledger handles GET /inventory/ledger — the append-only movement history
+// with running balances (PRD §53).
 // @Tags inventory
-// @Summary List inventory movement history
+// @Summary List the inventory ledger
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param product_id query string false "Filter by product UUID"
-// @Param type query string false "Movement type" Enums(IN, OUT)
+// @Param warehouse_id query string false "Filter by warehouse UUID"
+// @Param type query string false "Transaction type" Enums(OPENING_BALANCE,RECEIVE,ISSUE,TRANSFER_IN,TRANSFER_OUT,ADJUSTMENT,RETURN)
 // @Param page query int false "Page number" default(1)
 // @Param per_page query int false "Items per page" default(20)
 // @Success 200 {object} response.Body
 // @Failure 400 {object} response.Body
 // @Failure 401 {object} response.Body
-// @Router /inventory/transactions [get]
-func (h *Handler) Transactions(c *gin.Context) {
+// @Router /inventory/ledger [get]
+func (h *Handler) Ledger(c *gin.Context) {
 	var req transactionsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		response.Error(c, sharederr.ErrValidation)
 		return
 	}
 
-	q := TransactionQuery{
+	q := LedgerQuery{
 		Type:    req.Type,
 		Page:    req.Page,
 		PerPage: req.PerPage,
@@ -423,27 +465,33 @@ func (h *Handler) Transactions(c *gin.Context) {
 		q.WarehouseID = &id
 	}
 
-	views, total, err := h.svc.Transactions(c.Request.Context(), q)
+	views, total, err := h.svc.Ledger(c.Request.Context(), q)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	items := make([]transactionEnvelope, 0, len(views))
+	items := make([]ledgerEnvelope, 0, len(views))
 	for _, v := range views {
-		items = append(items, transactionEnvelope{
-			ID:          v.ID,
-			ProductID:   v.ProductID,
-			ProductSKU:  v.ProductSKU,
-			ProductName: v.ProductName,
-			Type:        v.Type,
-			Quantity:    v.Quantity,
-			UnitCost:    v.UnitCost,
-			Note:        v.Note,
-			UserID:      v.UserID,
-			WarehouseID: v.WarehouseID,
-			TransferID:  v.TransferID,
-			CreatedAt:   v.CreatedAt,
+		items = append(items, ledgerEnvelope{
+			ID:              v.ID,
+			ProductID:       v.ProductID,
+			ProductSKU:      v.ProductSKU,
+			ProductName:     v.ProductName,
+			TransactionType: v.TransactionType,
+			Direction:       v.Direction,
+			Quantity:        v.Quantity,
+			Balance:         v.Balance,
+			UnitCost:        v.UnitCost,
+			TotalCost:       v.TotalCost,
+			Note:            v.Note,
+			UserID:          v.UserID,
+			WarehouseID:     v.WarehouseID,
+			TransferID:      v.TransferID,
+			ReferenceType:   v.ReferenceType,
+			ReferenceID:     v.ReferenceID,
+			Reason:          v.Reason,
+			CreatedAt:       v.CreatedAt,
 		})
 	}
 
@@ -501,4 +549,212 @@ func clampPerPage(p int) int {
 		return 20
 	}
 	return p
+}
+
+type reservationRequest struct {
+	ProductID     string  `json:"product_id" validate:"required"`
+	WarehouseID   string  `json:"warehouse_id" validate:"required"`
+	Quantity      int     `json:"quantity" validate:"required,min=1"`
+	ReferenceType string  `json:"reference_type" validate:"required"`
+	ReferenceID   string  `json:"reference_id" validate:"required"`
+	ExpiresAt     *string `json:"expires_at"`
+}
+
+type reservationsRequest struct {
+	ProductID   string `form:"product_id"`
+	WarehouseID string `form:"warehouse_id"`
+	Status      string `form:"status"`
+	Page        int    `form:"page"`
+	PerPage     int    `form:"per_page"`
+}
+
+type reservationEnvelope struct {
+	ID            uuid.UUID `json:"id"`
+	ProductID     uuid.UUID `json:"product_id"`
+	ProductSKU    string    `json:"product_sku"`
+	ProductName   string    `json:"product_name"`
+	WarehouseID   uuid.UUID `json:"warehouse_id"`
+	Quantity      int       `json:"quantity"`
+	ReferenceType string    `json:"reference_type"`
+	ReferenceID   string    `json:"reference_id"`
+	Status        string    `json:"status"`
+	ExpiresAt     *string   `json:"expires_at,omitempty"`
+	CreatedAt     string    `json:"created_at"`
+}
+
+// CreateReservation handles POST /inventory/reservations.
+func (h *Handler) CreateReservation(c *gin.Context) {
+	var req reservationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+	if err := h.val.Validate(req); err != nil {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+	pid, ok1 := parseUUID(req.ProductID)
+	wid, ok2 := parseUUID(req.WarehouseID)
+	if !ok1 || !ok2 {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+
+	var expires *time.Time
+	if req.ExpiresAt != nil {
+		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+		if err != nil {
+			response.Error(c, sharederr.ErrValidation)
+			return
+		}
+		expires = &t
+	}
+
+	rsv, err := h.svc.CreateReservation(c.Request.Context(), ReservationInput{
+		ProductID:     pid,
+		WarehouseID:   wid,
+		Quantity:      req.Quantity,
+		ReferenceType: req.ReferenceType,
+		ReferenceID:   req.ReferenceID,
+		ExpiresAt:     expires,
+	})
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	details := gin.H{
+		"reservation_id": rsv.ID.String(),
+		"product_id":     pid.String(),
+		"warehouse_id":   wid.String(),
+		"quantity":       req.Quantity,
+	}
+	h.audit.Record(audit.EntryFromContext(c, audit.Entry{
+		Action:     "RESERVATION_CREATED",
+		EntityType: "reservation",
+		EntityID:   &[]string{rsv.ID.String()}[0],
+		Details:    details,
+	}))
+	response.Created(c, gin.H{
+		"id":             rsv.ID,
+		"product_id":     rsv.ProductID,
+		"warehouse_id":   rsv.WarehouseID,
+		"quantity":       rsv.Quantity,
+		"reference_type": rsv.ReferenceType,
+		"reference_id":   rsv.ReferenceID,
+		"status":         rsv.Status,
+	})
+}
+
+// ReleaseReservation handles POST /inventory/reservations/:id/release.
+func (h *Handler) ReleaseReservation(c *gin.Context) {
+	id, ok := parseUUID(c.Param("id"))
+	if !ok {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+	rsv, err := h.svc.ReleaseReservation(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	h.audit.Record(audit.EntryFromContext(c, audit.Entry{
+		Action:     "RESERVATION_RELEASED",
+		EntityType: "reservation",
+		EntityID:   &[]string{rsv.ID.String()}[0],
+		Details:    gin.H{"quantity": rsv.Quantity},
+	}))
+	response.OK(c, gin.H{"id": rsv.ID, "status": rsv.Status})
+}
+
+// ConsumeReservation handles POST /inventory/reservations/:id/consume —
+// converts the reservation into an ISSUE ledger entry atomically.
+func (h *Handler) ConsumeReservation(c *gin.Context) {
+	id, ok := parseUUID(c.Param("id"))
+	if !ok {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+	userID := middleware.UserIDFromContext(c)
+	rsv, inv, err := h.svc.ConsumeReservation(c.Request.Context(), id, &userID)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	h.audit.Record(audit.EntryFromContext(c, audit.Entry{
+		Action:     "RESERVATION_CONSUMED",
+		EntityType: "reservation",
+		EntityID:   &[]string{rsv.ID.String()}[0],
+		Details: gin.H{
+			"quantity":   rsv.Quantity,
+			"product_id": rsv.ProductID.String(),
+		},
+		BeforeData: gin.H{"quantity": inv.Quantity + rsv.Quantity},
+		AfterData:  gin.H{"quantity": inv.Quantity},
+	}))
+	response.OK(c, gin.H{
+		"id":          rsv.ID,
+		"status":      rsv.Status,
+		"quantity":    inv.Quantity,
+		"reserved":    inv.ReservedQuantity,
+		"available":   inv.Quantity - inv.ReservedQuantity,
+		"updated_at":  inv.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+// ListReservations handles GET /inventory/reservations.
+func (h *Handler) ListReservations(c *gin.Context) {
+	var req reservationsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Error(c, sharederr.ErrValidation)
+		return
+	}
+
+	q := ReservationQuery{Status: req.Status, Page: req.Page, PerPage: req.PerPage}
+	if req.ProductID != "" {
+		id, ok := parseUUID(req.ProductID)
+		if !ok {
+			response.Error(c, sharederr.ErrValidation)
+			return
+		}
+		q.ProductID = id
+	}
+	if req.WarehouseID != "" {
+		id, ok := parseUUID(req.WarehouseID)
+		if !ok {
+			response.Error(c, sharederr.ErrValidation)
+			return
+		}
+		q.WarehouseID = &id
+	}
+
+	views, total, err := h.svc.Reservations(c.Request.Context(), q)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	items := make([]reservationEnvelope, 0, len(views))
+	for _, v := range views {
+		items = append(items, reservationEnvelope{
+			ID:            v.ID,
+			ProductID:     v.ProductID,
+			ProductSKU:    v.ProductSKU,
+			ProductName:   v.ProductName,
+			WarehouseID:   v.WarehouseID,
+			Quantity:      v.Quantity,
+			ReferenceType: v.ReferenceType,
+			ReferenceID:   v.ReferenceID,
+			Status:        v.Status,
+			ExpiresAt:     v.ExpiresAt,
+			CreatedAt:     v.CreatedAt,
+		})
+	}
+
+	response.Paginated(c, items, &response.Pagination{
+		Page:       clampPage(req.Page),
+		PerPage:    clampPerPage(req.PerPage),
+		Total:      total,
+		TotalPages: int((total + int64(clampPerPage(req.PerPage)) - 1) / int64(clampPerPage(req.PerPage))),
+	})
 }

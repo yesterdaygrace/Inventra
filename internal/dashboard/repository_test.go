@@ -16,15 +16,17 @@ import (
 	"inventory/internal/category"
 	"inventory/internal/inventory"
 	"inventory/internal/product"
+	"inventory/internal/warehouses"
 )
 
 var testModels = []any{
 	&auth.Role{},
 	&auth.User{},
+	&warehouses.Warehouse{},
 	&category.Category{},
 	&product.Product{},
 	&inventory.Inventory{},
-	&inventory.InventoryTransaction{},
+	&inventory.LedgerEntry{},
 	&activitylog.ActivityLog{},
 }
 
@@ -36,6 +38,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() {
 		db.Exec("DROP TABLE IF EXISTS activity_logs CASCADE")
 		db.Exec("DROP TABLE IF EXISTS inventory_transactions CASCADE")
+		db.Exec("DROP TABLE IF EXISTS inventory_ledger CASCADE")
 		db.Exec("DROP TABLE IF EXISTS inventory CASCADE")
 		db.Exec("DROP TABLE IF EXISTS products CASCADE")
 		db.Exec("DROP TABLE IF EXISTS categories CASCADE")
@@ -77,8 +80,17 @@ func seedQuantity(t *testing.T, db *gorm.DB, pid uuid.UUID, qty int) {
 
 func seedMovement(t *testing.T, db *gorm.DB, pid uuid.UUID, typ string, qty int, unitCost *float64) {
 	t.Helper()
-	require.NoError(t, db.Create(&inventory.InventoryTransaction{
-		ProductID: pid, Type: typ, Quantity: qty, UnitCost: unitCost,
+	var wh warehouses.Warehouse
+	if err := db.Where(warehouses.Warehouse{Code: "DEFAULT"}).FirstOrCreate(&wh, warehouses.Warehouse{Code: "DEFAULT", Name: "Default"}).Error; err != nil {
+		t.Fatalf("seed default warehouse: %v", err)
+	}
+	direction := "IN"
+	if typ == inventory.LedgerIssue {
+		direction = "OUT"
+	}
+	require.NoError(t, db.Create(&inventory.LedgerEntry{
+		ProductID: pid, TransactionType: typ, Direction: direction, Quantity: qty, UnitCost: unitCost,
+		WarehouseID: wh.ID,
 	}).Error)
 }
 
@@ -122,7 +134,7 @@ func TestRepoInventoryValueUsesLastStockInCost(t *testing.T) {
 	p := seedProduct(t, db, cat.ID, "Widget", "SKU", 1000, 5)
 	seedQuantity(t, db, p.ID, 10)
 	unitCost := 50.0
-	seedMovement(t, db, p.ID, "IN", 10, &unitCost)
+	seedMovement(t, db, p.ID, inventory.LedgerReceive, 10, &unitCost)
 
 	value, err := repo.InventoryValue(context.Background())
 	require.NoError(t, err)
@@ -184,8 +196,8 @@ func TestRepoTopSellersAndDistribution(t *testing.T) {
 	elecCat := seedCategory(t, db, "Electronics")
 	p1 := seedProduct(t, db, bookCat.ID, "Novel", "B1", 10, 5)
 	p2 := seedProduct(t, db, elecCat.ID, "Router", "E1", 80, 5)
-	seedMovement(t, db, p1.ID, "OUT", 7, nil)
-	seedMovement(t, db, p2.ID, "OUT", 3, nil)
+	seedMovement(t, db, p1.ID, inventory.LedgerIssue, 7, nil)
+	seedMovement(t, db, p2.ID, inventory.LedgerIssue, 3, nil)
 
 	sellers, err := repo.TopSellers(context.Background(), 1)
 	require.NoError(t, err)
@@ -226,8 +238,8 @@ func TestRepoRecentActivitiesAndMovement(t *testing.T) {
 
 	cat := seedCategory(t, db, "Electronics")
 	p := seedProduct(t, db, cat.ID, "Widget", "W", 10, 5)
-	seedMovement(t, db, p.ID, "IN", 10, nil)
-	seedMovement(t, db, p.ID, "OUT", 4, nil)
+	seedMovement(t, db, p.ID, inventory.LedgerReceive, 10, nil)
+	seedMovement(t, db, p.ID, inventory.LedgerIssue, 4, nil)
 
 	since := time.Now().AddDate(0, 0, -1)
 	moves, err := repo.InventoryMovement(context.Background(), since)

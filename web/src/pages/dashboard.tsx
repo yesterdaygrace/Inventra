@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
+  ArrowUpRight,
   Clock,
   PackagePlus,
   ClipboardList,
@@ -17,7 +18,11 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
   ResponsiveContainer,
+  Sector,
   Tooltip,
   XAxis,
   YAxis,
@@ -57,13 +62,19 @@ export function DashboardPage() {
   const summaryData = summary.data;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Header with more presence */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Welcome back, {user?.name.split(" ")[0] ?? "there"}. Here's what's happening in your
-            warehouse.
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Welcome back,{" "}
+            <span className="font-medium text-foreground">
+              {user?.name.split(" ")[0] ?? "there"}
+            </span>
+            . Here is what is happening in your inventory.
           </p>
         </div>
         <div className="flex gap-2">
@@ -82,36 +93,40 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* KPI cards — staggered entry, each card navigates to its module */}
+      <div className="rise-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="Total Products"
           value={summary.isLoading ? undefined : formatNumber(summaryData?.total_products)}
           icon={Package}
           tone="default"
+          to="/products"
         />
         <KpiCard
           label="Total Categories"
           value={summary.isLoading ? undefined : formatNumber(summaryData?.total_categories)}
           icon={Boxes}
           tone="default"
+          to="/categories"
         />
         <KpiCard
           label="Inventory Value"
           value={summary.isLoading ? undefined : formatCurrency(summaryData?.inventory_value)}
           icon={DollarSign}
           tone="default"
+          to="/inventory"
         />
         <KpiCard
           label="Low Stock Items"
           value={summary.isLoading ? undefined : formatNumber(summaryData?.low_stock_count)}
           icon={AlertTriangle}
           tone={summaryData && summaryData.low_stock_count > 0 ? "warning" : "default"}
+          to="/inventory?low_stock=true"
         />
       </div>
 
       {/* Charts row */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle>Inventory Movement</CardTitle>
@@ -143,20 +158,26 @@ export function DashboardPage() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={32} />
-                    <YAxis tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} width={48} />
+                    <XAxis dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={32} />
+                    <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={compactNumber} />
                     <Tooltip
-                      contentStyle={{
-                        backgroundColor: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
+                      content={<ChartTooltip />}
+                      cursor={{ stroke: "var(--color-muted-foreground)", strokeDasharray: "4 4" }}
                     />
-                    <Area type="monotone" dataKey="Stock In" stroke="var(--color-health)" strokeWidth={2} fill="url(#gIn)" />
-                    <Area type="monotone" dataKey="Stock Out" stroke="var(--color-critical)" strokeWidth={2} fill="url(#gOut)" />
+                    <Area type="monotone" dataKey="Stock In" stroke="var(--color-health)" strokeWidth={2} fill="url(#gIn)" activeDot={{ r: 4, strokeWidth: 2 }} />
+                    <Area type="monotone" dataKey="Stock Out" stroke="var(--color-critical)" strokeWidth={2} fill="url(#gOut)" activeDot={{ r: 4, strokeWidth: 2 }} />
                   </AreaChart>
                 </ResponsiveContainer>
+                <div className="mt-2 flex items-center justify-center gap-5 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span aria-hidden className="h-2 w-2 rounded-full bg-health" />
+                    Stock In
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span aria-hidden className="h-2 w-2 rounded-full bg-critical" />
+                    Stock Out
+                  </span>
+                </div>
               </div>
             ) : (
               <EmptyState title="No movement yet" description="Stock transactions will appear here." />
@@ -167,7 +188,7 @@ export function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Category Distribution</CardTitle>
-            <CardDescription>Products per category</CardDescription>
+            <CardDescription>Top 8 categories by product count</CardDescription>
           </CardHeader>
           <CardContent>
             {category.isLoading ? (
@@ -175,25 +196,16 @@ export function DashboardPage() {
             ) : category.isError ? (
               <ErrorState description="Could not load categories." onRetry={() => category.refetch()} />
             ) : category.data?.datasets?.[0]?.data?.some((v) => v > 0) ? (
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={category.data.labels.map((label, i) => ({ name: label, count: category.data!.datasets[0].data[i] ?? 0 }))} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} interval={0} angle={-20} textAnchor="end" height={48} />
-                    <YAxis tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <Tooltip
-                      cursor={{ fill: "var(--color-muted)" }}
-                      contentStyle={{
-                        backgroundColor: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Bar dataKey="count" fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={36} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <CategoryPie
+                data={category.data.labels
+                  .map((label, i) => ({
+                    name: label,
+                    value: category.data!.datasets[0].data[i] ?? 0,
+                  }))
+                  .filter((d) => d.value > 0)
+                  .sort((a, b) => b.value - a.value)
+                  .slice(0, 8)}
+              />
             ) : (
               <EmptyState title="No categories yet" />
             )}
@@ -202,12 +214,12 @@ export function DashboardPage() {
       </div>
 
       {/* Bottom row */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {/* Top selling */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        {/* Top selling — now interactive: hover highlight, click to view products */}
         <Card>
           <CardHeader>
             <CardTitle>Top Selling Products</CardTitle>
-            <CardDescription>Units sold across all time</CardDescription>
+            <CardDescription>Units sold across all time · click a bar to explore</CardDescription>
           </CardHeader>
           <CardContent>
             {topSelling.isLoading ? (
@@ -215,25 +227,12 @@ export function DashboardPage() {
             ) : topSelling.isError ? (
               <ErrorState description="Could not load top sellers." onRetry={() => topSelling.refetch()} />
             ) : topSelling.data?.datasets?.[0]?.data?.some((v) => v > 0) ? (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={topSelling.data.labels.map((label, i) => ({ name: label, units: topSelling.data!.datasets[0].data[i] ?? 0 }))} layout="vertical" margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} width={110} />
-                    <Tooltip
-                      cursor={{ fill: "var(--color-muted)" }}
-                      contentStyle={{
-                        backgroundColor: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Bar dataKey="units" fill="var(--color-info)" radius={[0, 4, 4, 0]} maxBarSize={20} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <TopSellingChart
+                data={topSelling.data.labels.map((label, i) => ({
+                  name: label,
+                  units: topSelling.data!.datasets[0].data[i] ?? 0,
+                }))}
+              />
             ) : (
               <EmptyState title="No sales yet" description="Stock-out transactions will rank products here." />
             )}
@@ -291,10 +290,15 @@ export function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {summaryData.low_stock_items.slice(0, 5).map((item) => (
-                    <TableRow key={item.product_id}>
+                    <TableRow key={item.product_id} className="cursor-pointer">
                       <TableCell>
-                        <p className="truncate font-medium">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">{item.sku}</p>
+                        <Link
+                          to="/inventory"
+                          className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <p className="truncate font-medium hover:underline">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">{item.sku}</p>
+                        </Link>
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge variant={item.quantity === 0 ? "critical" : "warning"}>
@@ -318,35 +322,238 @@ export function DashboardPage() {
   );
 }
 
+// Compact axis number format: 1200 -> "1.2k", 950 -> "950"
+function compactNumber(v: number): string {
+  if (Math.abs(v) >= 1000) {
+    const s = (v / 1000).toFixed(1).replace(/\.0$/, "");
+    return `${s}k`;
+  }
+  return String(v);
+}
+
+// Truncate long category/product names for axis ticks
+function truncateLabel(v: string): string {
+  return v.length > 18 ? `${v.slice(0, 17)}…` : v;
+}
+
+interface TooltipPayloadEntry {
+  name?: string | number;
+  value?: number | string;
+  color?: string;
+}
+
+// Shared card-styled tooltip: muted label header, one dot-labeled row per series.
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  unit,
+}: {
+  active?: boolean;
+  payload?: TooltipPayloadEntry[];
+  label?: string | number;
+  unit?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="min-w-36 rounded-lg border border-border bg-card px-3 py-2 shadow-md">
+      {label !== undefined && label !== "" && (
+        <p className="mb-1.5 truncate text-xs font-medium text-muted-foreground">{label}</p>
+      )}
+      <div className="space-y-1">
+        {payload.map((entry, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span
+              aria-hidden
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: entry.color }}
+            />
+            <span className="truncate text-muted-foreground">{entry.name}</span>
+            <span className="ml-auto pl-4 font-medium tabular-nums text-foreground">
+              {typeof entry.value === "number" ? entry.value.toLocaleString() : entry.value}
+              {unit ? ` ${unit}` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const AXIS_TICK = { fontSize: 12, fill: "var(--color-muted-foreground)" };
+
+// ——— Pie palette: distinct per category, teal-anchored ———
+const PIE_COLORS = [
+  "var(--color-primary)",
+  "oklch(0.58 0.11 235)",
+  "oklch(0.62 0.12 165)",
+  "oklch(0.68 0.10 40)",
+  "oklch(0.60 0.12 285)",
+  "oklch(0.55 0.13 25)",
+  "oklch(0.66 0.09 210)",
+  "oklch(0.72 0.08 145)",
+] as const;
+
+function PieTooltip({ active, payload, total }: { active?: boolean; payload?: Array<{ payload: { name: string; value: number }; color?: string }>; total: number }) {
+  if (!active || !payload?.length) return null;
+  const entry = payload[0];
+  const { name, value } = entry.payload;
+  const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0";
+  return (
+    <div className="min-w-36 rounded-lg border border-border bg-card px-3 py-2 shadow-md">
+      <p className="mb-1.5 flex items-center gap-2 truncate text-xs font-medium text-muted-foreground">
+        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+        {name}
+      </p>
+      <p className="text-xs">
+        <span className="font-medium tabular-nums text-foreground">{value.toLocaleString()} products</span>
+        <span className="ml-2 tabular-nums text-muted-foreground">{pct}%</span>
+      </p>
+    </div>
+  );
+}
+
+// Recharts active shape for donut: outer ring bump + centered label
+function renderPieActiveShape(props: unknown) {
+  const p = props as {
+    cx: number; cy: number;
+    innerRadius: number; outerRadius: number;
+    startAngle: number; endAngle: number;
+    fill: string; payload: { name: string; value: number };
+  };
+  return (
+    <g>
+      <Sector cx={p.cx} cy={p.cy} innerRadius={p.innerRadius} outerRadius={p.outerRadius + 6} startAngle={p.startAngle} endAngle={p.endAngle} fill={p.fill} stroke="var(--color-card)" strokeWidth={2} />
+      <Sector cx={p.cx} cy={p.cy} innerRadius={p.outerRadius + 8} outerRadius={p.outerRadius + 10} startAngle={p.startAngle} endAngle={p.endAngle} fill={p.fill} opacity={0.35} />
+    </g>
+  );
+}
+
+function CategoryPie({ data }: { data: Array<{ name: string; value: number }> }) {
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const total = React.useMemo(() => data.reduce((s, d) => s + d.value, 0), [data]);
+
+  return (
+    <div className="flex flex-col">
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={58}
+              outerRadius={88}
+              paddingAngle={2}
+              dataKey="value"
+              nameKey="name"
+              isAnimationActive
+              animationDuration={600}
+              activeIndex={activeIndex}
+              activeShape={renderPieActiveShape}
+              onMouseEnter={(_, i) => setActiveIndex(i)}
+            >
+              {data.map((_, i) => (
+                <Cell key={`c-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="var(--color-card)" strokeWidth={2} className="transition-opacity hover:opacity-90" />
+              ))}
+            </Pie>
+            <Tooltip content={<PieTooltip total={total} />} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      {/* Custom legend: all 8 rows, keyboard-accessible, dot + label + percent */}
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 px-1">
+        {data.map((d, i) => {
+          const pct = total > 0 ? ((d.value / total) * 100).toFixed(0) : "0";
+          return (
+            <button
+              key={d.name}
+              type="button"
+              onMouseEnter={() => setActiveIndex(i)}
+              onFocus={() => setActiveIndex(i)}
+              className="flex items-center gap-2 rounded px-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+            >
+              <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+              <span className="min-w-0 flex-1 truncate text-muted-foreground" title={d.name}>{d.name}</span>
+              <span className="shrink-0 tabular-nums text-foreground">{pct}%</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TopSellingChart({ data }: { data: Array<{ name: string; units: number }> }) {
+  const [activeIndex, setActiveIndex] = React.useState<number | null>(null);
+  // Only items with sales; sorted longest-on-top for scanability
+  const sorted = React.useMemo(() => [...data].filter((d) => d.units > 0).sort((a, b) => b.units - a.units).slice(0, 8), [data]);
+
+  return (
+    <div className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={sorted}
+          layout="vertical"
+          margin={{ top: 4, right: 16, bottom: 0, left: 8 }}
+          onMouseMove={(state: unknown) => {
+            const s = state as { activeTooltipIndex?: number } | null;
+            if (s && typeof s.activeTooltipIndex === "number") setActiveIndex(s.activeTooltipIndex);
+          }}
+          onMouseLeave={() => setActiveIndex(null)}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
+          <XAxis type="number" tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} tickFormatter={compactNumber} />
+          <YAxis type="category" dataKey="name" tick={AXIS_TICK} tickLine={false} axisLine={false} width={140} tickFormatter={truncateLabel} />
+          <Tooltip content={<ChartTooltip unit="units" />} cursor={{ fill: "var(--color-muted)" }} />
+          <Bar dataKey="units" name="Sold" radius={[0, 4, 4, 0]} maxBarSize={22} isAnimationActive animationDuration={700} cursor="pointer">
+            {sorted.map((_, i) => (
+              <Cell
+                key={`b-${i}`}
+                fill={activeIndex === i ? "var(--color-primary)" : "var(--color-info)"}
+                opacity={activeIndex === null ? 1 : activeIndex === i ? 1 : 0.55}
+                className="transition-all duration-150"
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="mt-2 text-center text-[11px] text-muted-foreground">Hover to highlight · values animate on load</p>
+    </div>
+  );
+}
+
 function KpiCard({
   label,
   value,
   icon: Icon,
   tone = "default",
+  to,
 }: {
   label: string;
   value?: string;
   icon: React.ComponentType<{ className?: string }>;
   tone?: "default" | "warning";
+  to?: string;
 }) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          {value === undefined ? (
-            <div className="mt-2 h-8 w-24 animate-pulse rounded bg-muted" />
-          ) : (
-            <p
-              className={cn(
-                "mt-1 text-2xl font-semibold tracking-tight",
-                tone === "warning" && "text-warning-foreground",
-              )}
-            >
-              {value}
-            </p>
-          )}
-        </div>
+  const body = (
+    <CardContent className="flex items-start justify-between pt-6">
+      <div>
+        <p className="text-sm text-muted-foreground">{label}</p>
+        {value === undefined ? (
+          <div className="mt-2 h-8 w-24 animate-pulse rounded bg-muted" />
+        ) : (
+          <p
+            className={cn(
+              "mt-1 text-2xl font-medium tracking-tight",
+              tone === "warning" && "text-warning-foreground",
+            )}
+          >
+            {value}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-1">
         <div
           className={cn(
             "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
@@ -355,8 +562,25 @@ function KpiCard({
         >
           <Icon className="h-5 w-5" />
         </div>
-      </CardContent>
-    </Card>
+        {to && (
+          <ArrowUpRight
+            aria-hidden
+            className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          />
+        )}
+      </div>
+    </CardContent>
+  );
+
+  const hover = to
+    ? "transition-[transform,box-shadow] duration-150 [transition-timing-function:var(--ease-out-quad)] group-hover:-translate-y-0.5 group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring"
+    : "";
+
+  if (!to) return <Card>{body}</Card>;
+  return (
+    <Link to={to} className="group rounded-xl focus-visible:outline-none" aria-label={`${label} — open`}>
+      <Card className={hover}>{body}</Card>
+    </Link>
   );
 }
 
@@ -373,7 +597,7 @@ function ActivityRow({ action, userName, time }: { action: string; userName: str
     );
 
   return (
-    <li className="flex items-start gap-3">
+    <li className="-mx-2 flex items-start gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-muted/50">
       <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
         {icon}
       </div>

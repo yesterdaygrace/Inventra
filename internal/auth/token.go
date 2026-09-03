@@ -16,7 +16,8 @@ import (
 
 // AccessClaims are the claims carried in a signed access token.
 type AccessClaims struct {
-	Role string `json:"role"`
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -64,10 +65,11 @@ func NewTokenManager(cfg TokenManagerConfig) *TokenManager {
 }
 
 // SignAccessToken issues a signed HS256 access token for the given user.
-func (tm *TokenManager) SignAccessToken(userID uuid.UUID, role string) (string, error) {
+func (tm *TokenManager) SignAccessToken(userID uuid.UUID, role string, permissions []string) (string, error) {
 	now := time.Now()
 	claims := AccessClaims{
-		Role: role,
+		Role:        role,
+		Permissions: permissions,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID.String(),
 			Issuer:    tm.issuer,
@@ -134,7 +136,7 @@ func (tm *TokenManager) HashRefreshToken(raw string) string {
 func (tm *TokenManager) RefreshTTL() time.Duration { return tm.refreshTTL }
 
 // TokenParser adapts TokenManager to middleware.ClaimsParser: it returns
-// (userID, role, error) from a raw access token.
+// (userID, role, permissions, error) from a raw access token.
 type TokenParser struct {
 	tm *TokenManager
 }
@@ -145,14 +147,14 @@ func NewTokenParser(tm *TokenManager) *TokenParser {
 }
 
 // ParseAccessToken implements middleware.ClaimsParser.
-func (p *TokenParser) ParseAccessToken(raw string) (uuid.UUID, string, error) {
+func (p *TokenParser) ParseAccessToken(raw string) (uuid.UUID, string, []string, error) {
 	claims, err := p.tm.ParseAccessToken(raw)
 	if err != nil {
-		return uuid.Nil, "", err
+		return uuid.Nil, "", nil, err
 	}
 	uid, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return uuid.Nil, "", ErrTokenInvalid
+		return uuid.Nil, "", nil, ErrTokenInvalid
 	}
-	return uid, claims.Role, nil
+	return uid, claims.Role, claims.Permissions, nil
 }

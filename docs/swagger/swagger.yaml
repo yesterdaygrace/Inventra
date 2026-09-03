@@ -79,6 +79,12 @@ definitions:
       quantity:
         minimum: 1
         type: integer
+      reason:
+        type: string
+      reference_id:
+        type: string
+      reference_type:
+        type: string
       unit_cost:
         type: number
       warehouse_id:
@@ -98,6 +104,12 @@ definitions:
       quantity:
         minimum: 1
         type: integer
+      reason:
+        type: string
+      reference_id:
+        type: string
+      reference_type:
+        type: string
       to_warehouse_id:
         type: string
     required:
@@ -148,6 +160,8 @@ definitions:
     type: object
   response.Body:
     properties:
+      code:
+        type: string
       data: {}
       message:
         type: string

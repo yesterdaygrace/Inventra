@@ -58,7 +58,6 @@ func newSvc(repo Repository) *Service { return NewService(repo) }
 func strPtr(s string) *string { return &s }
 func fPtr(f float64) *float64 { return &f }
 func bPtr(b bool) *bool       { return &b }
-func iPtr(i int) *int         { return &i }
 
 func TestCreateValidatesEmptyFields(t *testing.T) {
 	m := new(mockRepo)

@@ -1,0 +1,24 @@
+import { cn } from "@/lib/utils";
+
+/**
+ * Inventra brand mark — an isometric cube (the "box" in inventory).
+ * Three faces in the app's teal family give it depth without gradients.
+ */
+export function Logo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={cn("shrink-0", className)}
+    >
+      {/* Top face */}
+      <path d="M16 4.5 26.5 10.25 16 16 5.5 10.25Z" fill="#45AEBF" />
+      {/* Left face */}
+      <path d="M5.5 10.25 16 16v11.5L5.5 21.75Z" fill="#2B8CA0" />
+      {/* Right face */}
+      <path d="M26.5 10.25 16 16v11.5l10.5-5.75Z" fill="#1A6B7D" />
+    </svg>
+  );
+}

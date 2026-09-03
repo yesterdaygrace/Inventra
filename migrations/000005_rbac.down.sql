@@ -1,0 +1,7 @@
+-- 000005_rbac down
+BEGIN;
+
+DROP TABLE IF EXISTS role_permissions CASCADE;
+DROP TABLE IF EXISTS permissions CASCADE;
+
+COMMIT;

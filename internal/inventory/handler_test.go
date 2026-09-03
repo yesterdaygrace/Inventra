@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"inventory/internal/auth"
 	"inventory/internal/shared/audit"
 	sharederr "inventory/internal/shared/errors"
 	"inventory/internal/shared/middleware"
@@ -23,11 +24,15 @@ import (
 type fakeParser struct {
 	userID uuid.UUID
 	role   string
+	perms  []string
 	err    error
 }
 
-func (p fakeParser) ParseAccessToken(string) (uuid.UUID, string, error) {
-	return p.userID, p.role, p.err
+func (p fakeParser) ParseAccessToken(string) (uuid.UUID, string, []string, error) {
+	if p.perms != nil {
+		return p.userID, p.role, p.perms, p.err
+	}
+	return p.userID, p.role, auth.PermissionSetForRole(p.role), p.err
 }
 
 func setupEngine(repo Repository, parser middleware.ClaimsParser) *gin.Engine {
@@ -35,7 +40,7 @@ func setupEngine(repo Repository, parser middleware.ClaimsParser) *gin.Engine {
 	svc := NewService(repo)
 	h := NewHandler(svc, validator.New())
 	r := gin.New()
-	RegisterRoutes(r.Group("/api/v1"), h, parser)
+	RegisterRoutes(r.Group("/api/v1"), h, parser, nil)
 	return r
 }
 
@@ -69,10 +74,10 @@ func TestInventoryListPublic(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decode(t, w)
-	assert.True(t, body["success"].(bool))
+	assert.Contains(t, body, "data")
 	data := body["data"].([]any)
 	assert.Equal(t, "Widget", data[0].(map[string]any)["product_name"])
-	assert.NotNil(t, body["pagination"])
+	assert.NotNil(t, body["meta"])
 }
 
 func TestInventoryListInvalidProductID(t *testing.T) {
@@ -96,13 +101,13 @@ func TestInventoryListLowStockFilter(t *testing.T) {
 func TestInventoryStockInOK(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("StockIn", mock.Anything, mock.MatchedBy(func(mv Movement) bool {
-		return mv.ProductID == pid && mv.Type == "IN" && mv.Quantity == 10
+	m.On("Receive", mock.Anything, mock.MatchedBy(func(mv Movement) bool {
+		return mv.ProductID == pid && mv.Type == LedgerReceive && mv.Quantity == 10
 	})).Return(&Inventory{ProductID: pid, Quantity: 10}, nil)
 
 	r := setupEngine(m, fakeParser{role: "ADMIN"})
 	body := `{"product_id":"` + pid.String() + `","quantity":10}`
-	w := doReq(t, r, "POST", "/api/v1/inventory/stock-in", body, "tok")
+	w := doReq(t, r, "POST", "/api/v1/inventory/receive", body, "tok")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	got := decode(t, w)
@@ -113,7 +118,7 @@ func TestInventoryStockInValidation(t *testing.T) {
 	m := new(mockRepo)
 	r := setupEngine(m, fakeParser{role: "ADMIN"})
 
-	w := doReq(t, r, "POST", "/api/v1/inventory/stock-in", `{"product_id":"`+uuid.New().String()+`","quantity":0}`, "tok")
+	w := doReq(t, r, "POST", "/api/v1/inventory/receive", `{"product_id":"`+uuid.New().String()+`","quantity":0}`, "tok")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -122,31 +127,31 @@ func TestInventoryStockInUnauthenticated(t *testing.T) {
 	r := setupEngine(m, fakeParser{err: sharederr.ErrUnauthorized})
 	pid := uuid.New()
 
-	w := doReq(t, r, "POST", "/api/v1/inventory/stock-in", `{"product_id":"`+pid.String()+`","quantity":5}`, "tok")
+	w := doReq(t, r, "POST", "/api/v1/inventory/receive", `{"product_id":"`+pid.String()+`","quantity":5}`, "tok")
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestInventoryStockInStaffAllowed(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("StockIn", mock.Anything, mock.Anything).Return(&Inventory{ProductID: pid, Quantity: 3}, nil)
+	m.On("Receive", mock.Anything, mock.Anything).Return(&Inventory{ProductID: pid, Quantity: 3}, nil)
 
 	r := setupEngine(m, fakeParser{role: "STAFF"})
 	body := `{"product_id":"` + pid.String() + `","quantity":3}`
-	w := doReq(t, r, "POST", "/api/v1/inventory/stock-in", body, "tok")
+	w := doReq(t, r, "POST", "/api/v1/inventory/receive", body, "tok")
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestInventoryStockOutOverdrawConflict(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("StockOut", mock.Anything, mock.MatchedBy(func(mv Movement) bool {
-		return mv.ProductID == pid && mv.Type == "OUT"
+	m.On("Issue", mock.Anything, mock.MatchedBy(func(mv Movement) bool {
+		return mv.ProductID == pid && mv.Type == LedgerIssue
 	})).Return(nil, sharederr.ErrConflict)
 
 	r := setupEngine(m, fakeParser{role: "ADMIN"})
 	body := `{"product_id":"` + pid.String() + `","quantity":99}`
-	w := doReq(t, r, "POST", "/api/v1/inventory/stock-out", body, "tok")
+	w := doReq(t, r, "POST", "/api/v1/inventory/issue", body, "tok")
 	assert.Equal(t, http.StatusConflict, w.Code)
 }
 
@@ -154,24 +159,24 @@ func TestInventoryTransactionsList(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
 	tid := uuid.New()
-	m.On("Transactions", mock.Anything, mock.Anything).Return([]*TransactionView{{
-		ID: tid, ProductID: pid, ProductSKU: "W1", ProductName: "Widget", Type: "IN", Quantity: 5,
+	m.On("Ledger", mock.Anything, mock.Anything).Return([]*LedgerView{{
+		ID: tid, ProductID: pid, ProductSKU: "W1", ProductName: "Widget", TransactionType: LedgerReceive, Quantity: 5,
 	}}, int64(1), nil)
 
 	r := setupEngine(m, nil)
-	w := doReq(t, r, "GET", "/api/v1/inventory/transactions", "", "")
+	w := doReq(t, r, "GET", "/api/v1/inventory/ledger", "", "")
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	data := decode(t, w)["data"].([]any)
-	assert.Equal(t, "IN", data[0].(map[string]any)["type"])
+	assert.Equal(t, LedgerReceive, data[0].(map[string]any)["transaction_type"])
 }
 
 func TestInventoryTransactionsInvalidType(t *testing.T) {
 	m := new(mockRepo)
-	m.On("Transactions", mock.Anything, mock.Anything).Return(nil, int64(0), sharederr.ErrValidation)
+	m.On("Ledger", mock.Anything, mock.Anything).Return(nil, int64(0), sharederr.ErrValidation)
 
 	r := setupEngine(m, nil)
-	w := doReq(t, r, "GET", "/api/v1/inventory/transactions?type=SIDE", "", "")
+	w := doReq(t, r, "GET", "/api/v1/inventory/ledger?type=SIDE", "", "")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -301,7 +306,7 @@ func TestInventoryTransactionsBadWarehouseFilter(t *testing.T) {
 	m := new(mockRepo)
 	r := setupEngine(m, nil)
 
-	w := doReq(t, r, "GET", "/api/v1/inventory/transactions?warehouse_id=nope", "", "")
+	w := doReq(t, r, "GET", "/api/v1/inventory/ledger?warehouse_id=nope", "", "")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -309,14 +314,14 @@ func TestInventoryTransactionsForwardsWarehouseFilter(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
 	wh := uuid.New()
-	m.On("Transactions", mock.Anything, mock.MatchedBy(func(q TransactionQuery) bool {
+	m.On("Ledger", mock.Anything, mock.MatchedBy(func(q LedgerQuery) bool {
 		return q.WarehouseID != nil && *q.WarehouseID == wh
-	})).Return([]*TransactionView{{
-		ProductID: pid, ProductSKU: "W1", ProductName: "Widget", Type: "IN", Quantity: 5,
+	})).Return([]*LedgerView{{
+		ProductID: pid, ProductSKU: "W1", ProductName: "Widget", TransactionType: LedgerReceive, Quantity: 5,
 	}}, int64(1), nil)
 
 	r := setupEngine(m, nil)
-	w := doReq(t, r, "GET", "/api/v1/inventory/transactions?warehouse_id="+wh.String(), "", "")
+	w := doReq(t, r, "GET", "/api/v1/inventory/ledger?warehouse_id="+wh.String(), "", "")
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
@@ -326,7 +331,7 @@ func TestInventoryStockInBadWarehouseUUID(t *testing.T) {
 	r := setupEngine(m, fakeParser{role: "ADMIN"})
 
 	body := `{"product_id":"` + pid.String() + `","quantity":5,"warehouse_id":"nope"}`
-	w := doReq(t, r, "POST", "/api/v1/inventory/stock-in", body, "tok")
+	w := doReq(t, r, "POST", "/api/v1/inventory/receive", body, "tok")
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -334,13 +339,13 @@ func TestInventoryStockOutForwardsWarehouse(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
 	wh := uuid.New()
-	m.On("StockOut", mock.Anything, mock.MatchedBy(func(mv Movement) bool {
-		return mv.Type == "OUT" && mv.WarehouseID != nil && *mv.WarehouseID == wh
+	m.On("Issue", mock.Anything, mock.MatchedBy(func(mv Movement) bool {
+		return mv.Type == LedgerIssue && mv.WarehouseID != nil && *mv.WarehouseID == wh
 	})).Return(&Inventory{ProductID: pid, Quantity: 2}, nil)
 
 	r := setupEngine(m, fakeParser{role: "ADMIN"})
 	body := `{"product_id":"` + pid.String() + `","quantity":2,"warehouse_id":"` + wh.String() + `"}`
-	w := doReq(t, r, "POST", "/api/v1/inventory/stock-out", body, "tok")
+	w := doReq(t, r, "POST", "/api/v1/inventory/issue", body, "tok")
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
@@ -371,7 +376,7 @@ func TestInventorySetAuditAndSetLoggerNilSafe(t *testing.T) {
 func TestInventorySetAuditRecordsStockIn(t *testing.T) {
 	m := new(mockRepo)
 	pid := uuid.New()
-	m.On("StockIn", mock.Anything, mock.Anything).Return(&Inventory{ProductID: pid, Quantity: 4}, nil)
+	m.On("Receive", mock.Anything, mock.Anything).Return(&Inventory{ProductID: pid, Quantity: 4}, nil)
 
 	rec := &recordingAudit{}
 	gin.SetMode(gin.TestMode)
@@ -379,14 +384,47 @@ func TestInventorySetAuditRecordsStockIn(t *testing.T) {
 	h := NewHandler(svc, validator.New())
 	h.SetAudit(rec)
 	r := gin.New()
-	r.POST("/api/v1/inventory/stock-in", middleware.Auth(fakeParser{userID: uuid.New(), role: "ADMIN"}), h.StockIn)
+	r.POST("/api/v1/inventory/receive", middleware.Auth(fakeParser{userID: uuid.New(), role: "ADMIN"}), h.Receive)
 
 	body := `{"product_id":"` + pid.String() + `","quantity":4}`
-	w := doReq(t, r, "POST", "/api/v1/inventory/stock-in", body, "tok")
+	w := doReq(t, r, "POST", "/api/v1/inventory/receive", body, "tok")
 	assert.Equal(t, http.StatusOK, w.Code)
 	require.Len(t, rec.entries, 1)
 	assert.Equal(t, "inventory", rec.entries[0].EntityType)
-	assert.Equal(t, "STOCK_IN", rec.entries[0].Action)
+	assert.Equal(t, "INVENTORY_RECEIVE", rec.entries[0].Action)
+}
+
+func TestInventorySetAuditCapturesRequestContext(t *testing.T) {
+	m := new(mockRepo)
+	pid := uuid.New()
+	m.On("Receive", mock.Anything, mock.Anything).Return(&Inventory{ProductID: pid, Quantity: 4}, nil)
+
+	rec := &recordingAudit{}
+	gin.SetMode(gin.TestMode)
+	svc := NewService(m)
+	h := NewHandler(svc, validator.New())
+	h.SetAudit(rec)
+	r := gin.New()
+	r.Use(middleware.RequestID())
+	r.POST("/api/v1/inventory/receive", middleware.Auth(fakeParser{userID: uuid.New(), role: "ADMIN"}), h.Receive)
+
+	body := `{"product_id":"` + pid.String() + `","quantity":4}`
+	req := httptest.NewRequest("POST", "/api/v1/inventory/receive", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer tok")
+	req.Header.Set("User-Agent", "qa-agent/1.0")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	require.Len(t, rec.entries, 1)
+	e := rec.entries[0]
+	require.NotNil(t, e.UserAgent)
+	assert.Equal(t, "qa-agent/1.0", *e.UserAgent)
+	require.NotNil(t, e.RequestID)
+	assert.NotEmpty(t, *e.RequestID)
+	require.NotNil(t, e.BeforeData)
+	require.NotNil(t, e.AfterData)
 }
 
 func TestInventoryExportLogsCSVFailure(t *testing.T) {
@@ -399,8 +437,69 @@ func TestInventoryExportLogsCSVFailure(t *testing.T) {
 	zlog := zap.NewNop()
 	h.SetLogger(zlog)
 	r := gin.New()
-	RegisterRoutes(r.Group("/api/v1"), h, nil)
+	RegisterRoutes(r.Group("/api/v1"), h, nil, nil)
 
 	w := doReq(t, r, "GET", "/api/v1/inventory/export", "", "")
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestReceiveIdempotencyNoDuplicateMovements is the PRD §18 guarantee tested
+// end-to-end: the same Idempotency-Key replayed against POST /inventory/receive
+// must return the stored response and never create a second movement.
+func TestReceiveIdempotencyNoDuplicateMovements(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB test in short mode")
+	}
+	db, repo, p := setupForRepo(t)
+	require.NoError(t, db.AutoMigrate(&middleware.IdempotencyKey{}))
+	require.NoError(t, db.Exec("ALTER TABLE idempotency_keys DROP CONSTRAINT IF EXISTS idempotency_keys_user_id_fkey").Error)
+	t.Cleanup(func() { db.Exec("DROP TABLE IF EXISTS idempotency_keys CASCADE") })
+
+	store := middleware.NewIdempotencyStore(db)
+
+	gin.SetMode(gin.TestMode)
+	h := NewHandler(NewService(repo), validator.New())
+	r := gin.New()
+	RegisterRoutes(r.Group("/api/v1"), h, fakeParser{userID: uuid.New(), role: "ADMIN"}, store)
+
+	body := `{"product_id":"` + p.ID.String() + `","quantity":7,"unit_cost":3.5,"note":"idem e2e"}`
+	send := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/inventory/receive", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", "phase3-key-1")
+		req.Header.Set("Authorization", "Bearer tok")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	first := send()
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	second := send()
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+
+	// Replay must return the byte-identical stored response.
+	assert.Equal(t, first.Body.String(), second.Body.String())
+
+	// Exactly one movement was recorded and stock moved once.
+	var ledgerRows int64
+	require.NoError(t, db.Model(&LedgerEntry{}).Where("product_id = ?", p.ID).Count(&ledgerRows).Error)
+	assert.Equal(t, int64(1), ledgerRows)
+
+	var inv Inventory
+	require.NoError(t, db.Where("product_id = ?", p.ID).First(&inv).Error)
+	assert.Equal(t, 7, inv.Quantity)
+
+	// Same key with a DIFFERENT body is rejected, not silently executed.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/inventory/receive", bytes.NewBufferString(`{"product_id":"`+p.ID.String()+`","quantity":99}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "phase3-key-1")
+	req.Header.Set("Authorization", "Bearer tok")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	// The rejected retry still left exactly one movement.
+	require.NoError(t, db.Model(&LedgerEntry{}).Where("product_id = ?", p.ID).Count(&ledgerRows).Error)
+	assert.Equal(t, int64(1), ledgerRows)
 }

@@ -46,7 +46,8 @@ export function CommandPalette({ open, onOpenChange, items }: CommandPaletteProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl p-0 gap-0">
+      {/* Cmd+K is keyboard-initiated and used constantly — no open/close animation. */}
+      <DialogContent animation={false} className="sm:max-w-xl p-0 gap-0">
         <DialogHeader className="sr-only">
           <DialogTitle>Quick navigation</DialogTitle>
         </DialogHeader>

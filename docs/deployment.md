@@ -57,6 +57,7 @@ Full variable set consumed by `internal/shared/config`:
 | `DB_PASSWORD` | **yes** | — | **must not be the shipped default in prod** |
 | `DB_NAME` | **yes** | — | compose default: `inventory` |
 | `DB_SSLMODE` | no | `disable` | keep `disable` for in-network compose |
+| `DB_AUTOMIGRATE` | no | `true` | `false` in production — schema owned by golang-migrate (`make migrate-up`) |
 | `JWT_SECRET` | **yes** | — | **secret — see §6** |
 | `JWT_ACCESS_TTL` | no | `15m` | |
 | `JWT_REFRESH_TTL` | no | `168h` | |
@@ -77,6 +78,31 @@ cause the API to refuse to start (`missing required configuration`). See
 - **No other state.** The API is stateless; JWTs are stateless (HMAC); audit
   log, categories, products, inventory, transactions all live in Postgres.
   Nothing on the web/services filesystem matters across restarts.
+
+## 3a. Migration runbook (golang-migrate)
+
+Production schema is owned by versioned SQL migrations in `migrations/`,
+applied with the embedded CLI via `cmd/migrate` (or the Makefile targets).
+AutoMigrate is disabled in production (`DB_AUTOMIGRATE=false`).
+
+Apply the schema (idempotent; safe to re-run):
+
+```bash
+make migrate-up        # applies all pending migrations (uses SEED_DB env)
+```
+
+Inspect/roll back:
+
+```bash
+make migrate-status    # prints current version (fails loudly if DIRTY)
+make migrate-down      # rolls back ALL migrations — use with care
+```
+
+Do not hand-edit Postgres DDL outside `migrations/`; every schema change
+rides on a new numbered migration (`00000N_*.sql`) reviewed like application
+code. In CI, the backend job runs `make migrate-up` against the ephemeral
+Postgres service before tests, so the test run always exercises the real
+migrated schema.
 
 ## 4. Makefile docker targets
 

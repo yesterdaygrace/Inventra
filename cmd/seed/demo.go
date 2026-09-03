@@ -177,13 +177,14 @@ func seedDemoInventory(db *gorm.DB) error {
 			return fmt.Errorf("create inventory %s: %w", prod.SKU, err)
 		}
 		note := "Initial opening stock"
-		txn := inventory.InventoryTransaction{
-			ProductID:   prod.ID,
-			Type:        "IN",
-			Quantity:    100,
-			UnitCost:    &prod.Price,
-			Note:        &note,
-			WarehouseID: &defaultWH.ID,
+		txn := inventory.LedgerEntry{
+			ProductID:       prod.ID,
+			TransactionType: inventory.LedgerReceive,
+			Quantity:        100,
+			UnitCost:        &prod.Price,
+			TotalCost:       inventory.TotalCostOf(100, &prod.Price),
+			Note:            &note,
+			WarehouseID:     defaultWH.ID,
 		}
 		if err := db.Create(&txn).Error; err != nil {
 			return fmt.Errorf("create opening txn %s: %w", prod.SKU, err)

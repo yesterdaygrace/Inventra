@@ -45,6 +45,11 @@ type activityEnvelope struct {
 	EntityID   *string    `json:"entity_id,omitempty"`
 	Details    any        `json:"details,omitempty"`
 	IP         *string    `json:"ip,omitempty"`
+	BeforeData any        `json:"before_data,omitempty"`
+	AfterData  any        `json:"after_data,omitempty"`
+	Reason     *string    `json:"reason,omitempty"`
+	UserAgent  *string    `json:"user_agent,omitempty"`
+	RequestID  *string    `json:"request_id,omitempty"`
 	CreatedAt  string     `json:"created_at"`
 }
 
@@ -56,6 +61,9 @@ func activityResponse(l *ActivityLog) activityEnvelope {
 		EntityType: l.EntityType,
 		EntityID:   l.EntityID,
 		IP:         l.IP,
+		Reason:     l.Reason,
+		UserAgent:  l.UserAgent,
+		RequestID:  l.RequestID,
 		CreatedAt:  l.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 	}
 	if l.User != nil {
@@ -65,6 +73,18 @@ func activityResponse(l *ActivityLog) activityEnvelope {
 		var details any
 		if err := json.Unmarshal(*l.Details, &details); err == nil {
 			env.Details = details
+		}
+	}
+	if l.BeforeData != nil {
+		var before any
+		if err := json.Unmarshal(*l.BeforeData, &before); err == nil {
+			env.BeforeData = before
+		}
+	}
+	if l.AfterData != nil {
+		var after any
+		if err := json.Unmarshal(*l.AfterData, &after); err == nil {
+			env.AfterData = after
 		}
 	}
 	return env

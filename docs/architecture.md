@@ -283,31 +283,27 @@ flowchart TD
 
 ## 5. Cross-Cutting Concerns
 
-### GORM AutoMigrate (No golang-migrate)
+### Versioned migrations (golang-migrate)
 
-Per decision D1, schema management uses GORM AutoMigrate:
+Per the fix-v2-gaps reconciliation (F1), production schema management uses
+**golang-migrate** with versioned SQL files in `migrations/` (applied via
+`make migrate-up`). The migration CLI lives at `cmd/migrate` and reads the
+same DB env vars as the server.
+
+GORM AutoMigrate remains available for local development only, gated by
+`DB_AUTOMIGRATE` (default `true`; set to `false` in production via
+docker-compose). The server runs AutoMigrate only when the flag is true:
 
 ```go
-// internal/shared/database/migrate.go
+// internal/shared/database/database.go
 func AutoMigrate(db *gorm.DB, models ...interface{}) error {
     return db.AutoMigrate(models...)
 }
 ```
 
-Migrations are registered in `internal/shared/database/models.go`:
-
-```go
-var BaseModels = []interface{}{
-    &auth.User{},
-    &auth.Role{},
-    &category.Category{},
-    &product.Product{},
-    &inventory.Inventory{},
-    &inventory.InventoryTransaction{},
-    &auth.RefreshToken{},
-    &activitylog.ActivityLog{},
-}
-```
+Models are still registered in `internal/shared/database/models.go` — the
+registry drives the dev AutoMigrate path and documents the schema that the
+`migrations/` baseline mirrors.
 
 ### Response Envelope
 
@@ -528,6 +524,22 @@ go tool cover -func=coverage.out
 ```
 
 Coverage gate: ≥80% per package.
+
+---
+
+---
+
+## 10. Data Integrity & Concurrency (fix-v2)
+
+This section mirrors the exhaustive evidence now also in `docs/database.md` Appendix A.
+
+**Atomicity.** Every stock-mutating path is a `gorm.DB.Transaction` — see `docs/database.md:A1` for the 7 inventory + 1 cycle count + idempotency sites (`inventory/repository.go:123,179,248,476,534,577,707`, `cyclecount/repository.go:52`). The standard is mandated in `docs/coding-standards.md:840`.
+
+**Row-level locking.** `FOR UPDATE` via `clause.Locking{Strength:"UPDATE"}` on all hot paths (11 + 1) — see `docs/database.md:A2`. The lock is held until `COMMIT`; stale reservations are lazily expired inside the lock.
+
+**Ledger.** Append-only; balance is derived on read via window function — see `docs/database.md:A4`.
+
+**Validation & audit** are layered per `docs/database.md:A3/A4` and `docs/security.md`.
 
 ---
 

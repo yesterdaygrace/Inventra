@@ -24,6 +24,7 @@ const (
 	defaultDBSslMode            = "disable"
 	defaultEnvFile              = ".env"
 	defaultDemoMode             = false
+	defaultAutoMigrate         = true
 	defaultLoginRateLimitRPM    = 10
 	defaultRefreshRateLimitRPM  = 30
 	defaultRegisterRateLimitRPM = 5
@@ -54,6 +55,7 @@ type Config struct {
 	CORSOrigins          []string
 	LogLevel             string
 	DemoMode             bool
+	AutoMigrate          bool
 	LoginRateLimitRPM    int
 	RefreshRateLimitRPM  int
 	RegisterRateLimitRPM int
@@ -120,6 +122,7 @@ func Load() (*Config, error) {
 		CORSOrigins:          splitOrigins(v.GetString("CORS_ORIGINS")),
 		LogLevel:             v.GetString("LOG_LEVEL"),
 		DemoMode:             v.GetBool("DEMO_MODE"),
+		AutoMigrate:          v.GetBool("DB_AUTOMIGRATE"),
 		LoginRateLimitRPM:    v.GetInt("LOGIN_RATE_LIMIT_RPM"),
 		RefreshRateLimitRPM:  v.GetInt("REFRESH_RATE_LIMIT_RPM"),
 		RegisterRateLimitRPM: v.GetInt("REGISTER_RATE_LIMIT_RPM"),
@@ -169,6 +172,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("CORS_ORIGINS", "")
 	v.SetDefault(envFileOverrideVar, defaultEnvFile)
 	v.SetDefault("DEMO_MODE", defaultDemoMode)
+	v.SetDefault("DB_AUTOMIGRATE", defaultAutoMigrate)
 	v.SetDefault("LOGIN_RATE_LIMIT_RPM", defaultLoginRateLimitRPM)
 	v.SetDefault("REFRESH_RATE_LIMIT_RPM", defaultRefreshRateLimitRPM)
 	v.SetDefault("REGISTER_RATE_LIMIT_RPM", defaultRegisterRateLimitRPM)

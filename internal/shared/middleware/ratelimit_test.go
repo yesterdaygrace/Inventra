@@ -64,5 +64,5 @@ func TestRateLimitResponseUsesStandardEnvelope(t *testing.T) {
 
 	w := doRateReq(r, "10.0.0.1")
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
-	assert.JSONEq(t, `{"success": false, "message": "rate limit exceeded"}`, w.Body.String())
+	assert.JSONEq(t, `{"error": {"code": "RATE_LIMITED", "message": "rate limit exceeded"}}`, w.Body.String())
 }

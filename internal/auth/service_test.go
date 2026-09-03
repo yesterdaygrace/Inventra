@@ -79,6 +79,19 @@ func (m *mockRepo) UpdateRefreshToken(ctx context.Context, t *RefreshToken) erro
 	return args.Error(0)
 }
 
+func (m *mockRepo) RevokeFamily(ctx context.Context, userID, familyID uuid.UUID) error {
+	args := m.Called(ctx, userID, familyID)
+	return args.Error(0)
+}
+
+func (m *mockRepo) PermissionsByRoleID(ctx context.Context, roleID uuid.UUID) ([]string, error) {
+	args := m.Called(ctx, roleID)
+	if v, ok := args.Get(0).([]string); ok {
+		return v, args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
 func (m *mockRepo) CreateActivityLog(ctx context.Context, entry ActivityLogEntry) error {
 	args := m.Called(ctx, entry)
 	return args.Error(0)
@@ -150,6 +163,7 @@ func TestLoginIssuesTokens(t *testing.T) {
 	repo := &mockRepo{}
 	repo.On("FindUserByEmail", mock.Anything, "ada@example.com").Return(user, nil)
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
@@ -216,6 +230,7 @@ func TestRefreshRotatesToken(t *testing.T) {
 	repo.On("FindRefreshTokenByHash", mock.Anything, storedHash).Return(rt, nil)
 	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("UpdateRefreshToken", mock.Anything, rt).Return(nil).Run(func(args mock.Arguments) {
 		rt := args.Get(1).(*RefreshToken)
 		require.NotNil(t, rt.RevokedAt, "old refresh token must be revoked")
@@ -235,23 +250,120 @@ func TestRefreshRotatesToken(t *testing.T) {
 
 func TestRefreshRevokedTokenUnauthorized(t *testing.T) {
 	revokedAt := time.Now()
+	uid := uuid.New()
+	familyID := uuid.New()
 	tm := newTestManager()
 	storedHash := tm.HashRefreshToken("used")
 	rt := &RefreshToken{
 		ID:        uuid.New(),
-		UserID:    uuid.New(),
+		UserID:    uid,
 		TokenHash: storedHash,
+		FamilyID:  familyID,
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 		RevokedAt: &revokedAt,
 	}
 	repo := &mockRepo{}
 	repo.On("FindRefreshTokenByHash", mock.Anything, storedHash).Return(rt, nil)
+	repo.On("RevokeFamily", mock.Anything, uid, familyID).Return(nil)
 
 	svc := newTestService(repo)
 	_, err := svc.Refresh(context.Background(), "used")
 
 	assert.ErrorIs(t, err, sharederr.ErrUnauthorized)
+	repo.AssertCalled(t, "RevokeFamily", mock.Anything, uid, familyID)
 }
+
+func TestRefreshReuseRevokesEntireFamily(t *testing.T) {
+	uid := uuid.New()
+	familyID := uuid.New()
+	tm := newTestManager()
+	storedHash := tm.HashRefreshToken("raw-A")
+	revokedA := &RefreshToken{
+		ID:        uuid.New(),
+		UserID:    uid,
+		TokenHash: storedHash,
+		FamilyID:  familyID,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+		RevokedAt: ptrTime(time.Now()),
+	}
+
+	repo := &mockRepo{}
+	repo.On("FindRefreshTokenByHash", mock.Anything, storedHash).Return(revokedA, nil)
+	repo.On("RevokeFamily", mock.Anything, uid, familyID).Return(nil)
+
+	svc := newTestService(repo)
+	_, err := svc.Refresh(context.Background(), "raw-A")
+
+	assert.ErrorIs(t, err, sharederr.ErrUnauthorized)
+	assert.Equal(t, 2, len(repo.Calls))
+	repo.AssertCalled(t, "RevokeFamily", mock.Anything, uid, familyID)
+}
+
+func TestRefreshRotationKeepsFamily(t *testing.T) {
+	// Normal rotation of a live token must copy the old family_id onto the
+	// new token — the whole login stays in one family.
+	uid := uuid.New()
+	user := &User{ID: uid, Email: "ada@example.com", RoleID: staffRoleID, IsActive: true}
+	familyID := uuid.New()
+	tm := newTestManager()
+	rawA := "raw-A"
+	storedA := tm.HashRefreshToken(rawA)
+	rtA := &RefreshToken{
+		ID:        uuid.New(),
+		UserID:    uid,
+		TokenHash: storedA,
+		FamilyID:  familyID,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+
+	repo := &mockRepo{}
+	repo.On("FindRefreshTokenByHash", mock.Anything, storedA).Return(rtA, nil)
+	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
+	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
+	repo.On("UpdateRefreshToken", mock.Anything, rtA).Return(nil)
+	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).
+		Return(nil).
+		Run(func(args mock.Arguments) {
+			rt := args.Get(1).(*RefreshToken)
+			assert.Equal(t, familyID, rt.FamilyID, "rotated token inherits the family")
+		})
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
+
+	svc := newTestService(repo)
+	res, err := svc.Refresh(context.Background(), rawA)
+
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	repo.AssertExpectations(t)
+}
+
+func TestLogoutRevokesOnlyOwnToken(t *testing.T) {
+	// Logout must not touch siblings in the family.
+	uid := uuid.New()
+	tm := newTestManager()
+	familyID := uuid.New()
+	rt := &RefreshToken{
+		ID:        uuid.New(),
+		UserID:    uid,
+		TokenHash: tm.HashRefreshToken("logout"),
+		FamilyID:  familyID,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	repo := &mockRepo{}
+	repo.On("FindRefreshTokenByHash", mock.Anything, tm.HashRefreshToken("logout")).Return(rt, nil)
+	repo.On("UpdateRefreshToken", mock.Anything, rt).Return(nil)
+	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
+
+	svc := newTestService(repo)
+	err := svc.Logout(context.Background(), "logout")
+
+	require.NoError(t, err)
+	repo.AssertNotCalled(t, "RevokeFamily")
+	repo.AssertExpectations(t)
+}
+
+func ptrTime(t time.Time) *time.Time { return &t }
 
 func TestLogoutRevokesToken(t *testing.T) {
 	tm := newTestManager()
@@ -375,6 +487,7 @@ func TestDemoLoginCreatesUserOnFirstCall(t *testing.T) {
 		u.ID = uid
 	})
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
@@ -397,6 +510,7 @@ func TestDemoLoginReusesExistingUser(t *testing.T) {
 	repo := &mockRepo{}
 	repo.On("FindUserByEmail", mock.Anything, DemoEmail).Return(existing, nil)
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 

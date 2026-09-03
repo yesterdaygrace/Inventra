@@ -21,7 +21,7 @@ func newTestManager() *TokenManager {
 func TestSignAndParseAccessToken(t *testing.T) {
 	tm := newTestManager()
 	uid := uuid.New()
-	raw, err := tm.SignAccessToken(uid, "ADMIN")
+	raw, err := tm.SignAccessToken(uid, "ADMIN", nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, raw)
 
@@ -36,7 +36,7 @@ func TestSignAndParseAccessToken(t *testing.T) {
 func TestParseAccessTokenRejectsTampered(t *testing.T) {
 	tm := newTestManager()
 	uid := uuid.New()
-	raw, err := tm.SignAccessToken(uid, "STAFF")
+	raw, err := tm.SignAccessToken(uid, "STAFF", nil)
 	require.NoError(t, err)
 
 	tampered := raw[:len(raw)-2] + "xx"
@@ -46,7 +46,7 @@ func TestParseAccessTokenRejectsTampered(t *testing.T) {
 
 func TestParseAccessTokenRejectsWrongSecret(t *testing.T) {
 	uid := uuid.New()
-	raw, err := newTestManager().SignAccessToken(uid, "STAFF")
+	raw, err := newTestManager().SignAccessToken(uid, "STAFF", nil)
 	require.NoError(t, err)
 
 	other := NewTokenManager(TokenManagerConfig{
@@ -65,7 +65,7 @@ func TestParseAccessTokenExpired(t *testing.T) {
 		RefreshTTL: 7 * 24 * time.Hour,
 	})
 	uid := uuid.New()
-	raw, err := tm.SignAccessToken(uid, "STAFF")
+	raw, err := tm.SignAccessToken(uid, "STAFF", nil)
 	require.NoError(t, err)
 
 	_, err = tm.ParseAccessToken(raw)

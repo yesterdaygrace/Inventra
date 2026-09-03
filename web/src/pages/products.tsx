@@ -124,8 +124,10 @@ export function ProductsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Products</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+            Products
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Manage your catalog — {formatNumber(products.data?.pagination?.total)} products
           </p>
         </div>

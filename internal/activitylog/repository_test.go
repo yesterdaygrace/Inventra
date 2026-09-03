@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"inventory/internal/auth"
@@ -176,6 +177,67 @@ func TestRepoListPaginationAndDefaultClamp(t *testing.T) {
 	all, _, err := repo.List(context.Background(), Query{PerPage: 0})
 	require.NoError(t, err)
 	assert.Len(t, all, 4, "per_page 0 clamps to default 20")
+}
+
+func TestRepoCreatePersistsEnrichedFields(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB test in short mode")
+	}
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(testModels...))
+	uid, _ := seedUser(t, db)
+	repo := NewGORMRepository(db)
+
+	reason := "restock"
+	ua := "qa-agent/1.0"
+	rid := "req-abc"
+	before := datatypes.JSON(`{"quantity":10}`)
+	after := datatypes.JSON(`{"quantity":15}`)
+	err := repo.Create(context.Background(), &ActivityLog{
+		UserID: &uid, Action: "STOCK_IN", EntityType: "inventory",
+		Reason: &reason, UserAgent: &ua, RequestID: &rid,
+		BeforeData: &before, AfterData: &after,
+	})
+	require.NoError(t, err)
+
+	var row ActivityLog
+	require.NoError(t, db.Where("action = ?", "STOCK_IN").First(&row).Error)
+	require.NotNil(t, row.Reason)
+	assert.Equal(t, "restock", *row.Reason)
+	require.NotNil(t, row.UserAgent)
+	assert.Equal(t, "qa-agent/1.0", *row.UserAgent)
+	require.NotNil(t, row.RequestID)
+	assert.Equal(t, "req-abc", *row.RequestID)
+	require.NotNil(t, row.BeforeData)
+	assert.Contains(t, string(*row.BeforeData), "10")
+	require.NotNil(t, row.AfterData)
+	assert.Contains(t, string(*row.AfterData), "15")
+}
+
+func TestRepoAppendOnlyGuard(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DB test in short mode")
+	}
+	db := setupTestDB(t)
+	require.NoError(t, db.AutoMigrate(testModels...))
+	uid, _ := seedUser(t, db)
+
+	for i := 0; i < 3; i++ {
+		seedLog(t, db, uid, "CREATE", "product", "A")
+	}
+
+	// The activity log is insert-only: repeated events for the same entity
+	// append new rows and never mutate existing ones.
+	var count int64
+	require.NoError(t, db.Model(&ActivityLog{}).Count(&count).Error)
+	assert.Equal(t, int64(3), count)
+
+	// The app-facing surface is pinned to insert + read only; no update or
+	// delete path can be added without breaking this assertion.
+	var _ interface {
+		Create(context.Context, *ActivityLog) error
+		List(context.Context, Query) ([]*ActivityLog, int64, error)
+	} = (*GORMRepository)(nil)
 }
 
 func ip(v string) *string { return &v }

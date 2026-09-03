@@ -7,6 +7,7 @@ import { queryClient } from "@/lib/query";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { Toaster } from "@/components/ui";
+import { Agentation } from "agentation";
 import "@/index.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -17,6 +18,7 @@ createRoot(document.getElementById("root")!).render(
           <AuthProvider>
             <App />
             <Toaster />
+            {import.meta.env.DEV && <Agentation />}
           </AuthProvider>
         </ThemeProvider>
       </QueryClientProvider>

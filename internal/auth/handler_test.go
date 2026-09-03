@@ -85,6 +85,7 @@ func TestRegisterLoginMeRoundtrip(t *testing.T) {
 	})
 	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
@@ -100,7 +101,7 @@ func TestRegisterLoginMeRoundtrip(t *testing.T) {
 		`{"email":"ada@example.com","password":"password123"}`, "")
 	assert.Equal(t, http.StatusOK, w.Code)
 	loginBody := decode(t, w)
-	assert.True(t, loginBody["success"].(bool), "login should succeed")
+	assert.Contains(t, loginBody, "data")
 	data := loginBody["data"].(map[string]any)
 	accessToken := data["access_token"].(string)
 	assert.NotEmpty(t, accessToken)
@@ -111,7 +112,7 @@ func TestRegisterLoginMeRoundtrip(t *testing.T) {
 	w = doJSON(t, r, "GET", "/api/v1/auth/me", "", accessToken)
 	assert.Equal(t, http.StatusOK, w.Code)
 	meBody := decode(t, w)
-	assert.True(t, meBody["success"].(bool))
+	assert.Contains(t, meBody, "data")
 	meData := meBody["data"].(map[string]any)
 	assert.Equal(t, "ada@example.com", meData["email"])
 	assert.Equal(t, "STAFF", meData["role"])
@@ -126,7 +127,8 @@ func TestProtectedRouteRejectsMissingToken(t *testing.T) {
 	w := doJSON(t, r, "GET", "/api/v1/auth/me", "", "")
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	body := decode(t, w)
-	assert.Equal(t, false, body["success"])
+	assert.Nil(t, body["data"])
+	assert.NotNil(t, body["error"])
 }
 
 func TestProtectedRouteRejectsInvalidToken(t *testing.T) {
@@ -166,7 +168,7 @@ func TestRefreshValidationError(t *testing.T) {
 // routes can be exercised with the shared test manager.
 func accessTokenFor(t *testing.T, tm *TokenManager, uid uuid.UUID, role string) string {
 	t.Helper()
-	raw, err := tm.SignAccessToken(uid, role)
+	raw, err := tm.SignAccessToken(uid, role, PermissionSetForRole(role))
 	require.NoError(t, err)
 	return raw
 }
@@ -185,6 +187,7 @@ func TestHandler_RefreshRoundtrip(t *testing.T) {
 	repo.On("FindUserByID", mock.Anything, uid).Return(user, nil)
 	repo.On("UpdateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
@@ -192,7 +195,7 @@ func TestHandler_RefreshRoundtrip(t *testing.T) {
 	w := doJSON(t, r, "POST", "/api/v1/auth/refresh", `{"refresh_token":"refreshtokraw"}`, "")
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decode(t, w)
-	assert.True(t, body["success"].(bool))
+	assert.Contains(t, body, "data")
 	data := body["data"].(map[string]any)
 	assert.NotEmpty(t, data["access_token"])
 	assert.NotEmpty(t, data["refresh_token"])
@@ -293,6 +296,7 @@ func TestHandler_UpdateProfile(t *testing.T) {
 		*args.Get(1).(*User) = *updated
 	})
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
 	r, _, tm := setupAuthEngine(repo)
@@ -301,7 +305,7 @@ func TestHandler_UpdateProfile(t *testing.T) {
 		`{"name":"Ada Lovelace","email":"new@profile.test"}`, token)
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decode(t, w)
-	assert.True(t, body["success"].(bool))
+	assert.Contains(t, body, "data")
 
 	repo.AssertExpectations(t)
 }
@@ -400,6 +404,7 @@ func TestHandler_DemoLoginEnabled(t *testing.T) {
 		args.Get(1).(*User).ID = uid
 	})
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
@@ -407,7 +412,7 @@ func TestHandler_DemoLoginEnabled(t *testing.T) {
 	w := doJSON(t, r, "POST", "/api/v1/auth/demo", "", "")
 	assert.Equal(t, http.StatusOK, w.Code)
 	body := decode(t, w)
-	assert.True(t, body["success"].(bool))
+	assert.Contains(t, body, "data")
 	data := body["data"].(map[string]any)
 	assert.NotEmpty(t, data["access_token"])
 	assert.Equal(t, DemoEmail, data["user"].(map[string]any)["email"])
@@ -420,6 +425,7 @@ func TestHandler_DemoLoginReusesExisting(t *testing.T) {
 	repo := &mockRepo{}
 	repo.On("FindUserByEmail", mock.Anything, DemoEmail).Return(existing, nil)
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 
@@ -447,6 +453,7 @@ func TestHandler_DemoTokenAuthorizesProtectedRoute(t *testing.T) {
 		args.Get(1).(*User).ID = uid
 	})
 	repo.On("FindRoleByID", mock.Anything, staffRoleID).Return(staffRole, nil)
+	repo.On("PermissionsByRoleID", mock.Anything, staffRoleID).Return(PermissionSetForRole("STAFF"), nil).Maybe()
 	repo.On("CreateRefreshToken", mock.Anything, mock.AnythingOfType("*auth.RefreshToken")).Return(nil)
 	repo.On("CreateActivityLog", mock.Anything, mock.Anything).Return(nil)
 	repo.On("FindUserByID", mock.Anything, uid).Return(

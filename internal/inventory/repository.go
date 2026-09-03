@@ -53,11 +53,67 @@ func (r *GORMRepository) resolveWarehouse(ctx context.Context, wh *uuid.UUID) (u
 	return r.DefaultWarehouse(ctx)
 }
 
-// StockIn records an IN movement and increments the product quantity in a
-// single DB transaction, scoped to the movement's warehouse (DEFAULT when
-// omitted). The inventory row is upserted per (product, warehouse) pair and
-// products with no existing row start from zero, so the first IN creates it.
-func (r *GORMRepository) StockIn(ctx context.Context, m Movement) (*Inventory, error) {
+// totalCostOf multiplies quantity by unit cost, returning nil when no unit
+// cost is recorded (e.g. issues before the costing engine assigns one).
+// TotalCostOf multiplies quantity by unit cost, returning nil when no unit
+// cost is recorded. Exported for the seed CLI and future costing work.
+func TotalCostOf(qty int, unit *float64) *float64 {
+	if unit == nil {
+		return nil
+	}
+	v := float64(qty) * *unit
+	return &v
+}
+
+// expireStaleReservations flips ACTIVE reservations past their expiry to
+// EXPIRED and releases their reserved quantity from the inventory row.
+// Caller must hold the inventory row lock and run this inside its
+// transaction; the released total is derived from exactly the rows flipped,
+// so repeated calls never double-subtract. Returns the released quantity.
+func expireStaleReservations(tx *gorm.DB, productID, warehouseID uuid.UUID) (int, error) {
+	var flipped []int
+	if err := tx.Raw(`
+		UPDATE inventory_reservations SET status = ?, updated_at = now()
+		WHERE product_id = ? AND warehouse_id = ? AND status = ?
+		  AND expires_at IS NOT NULL AND expires_at < now()
+		RETURNING quantity`,
+		ReservationExpired, productID, warehouseID, ReservationActive).
+		Scan(&flipped).Error; err != nil {
+		return 0, err
+	}
+	released := 0
+	for _, q := range flipped {
+		released += q
+	}
+	if released == 0 {
+		return 0, nil
+	}
+	if err := tx.Exec(`
+		UPDATE inventory SET reserved_quantity = GREATEST(0, reserved_quantity - ?),
+			version = version + 1
+		WHERE product_id = ? AND warehouse_id = ?`,
+		released, productID, warehouseID).Error; err != nil {
+		return 0, err
+	}
+	return released, nil
+}
+
+// activeReservedQuantity sums ACTIVE reservation quantities for a pair.
+func activeReservedQuantity(tx *gorm.DB, productID, warehouseID uuid.UUID) (int, error) {
+	var sum int
+	err := tx.Model(&Reservation{}).
+		Select("COALESCE(SUM(quantity), 0)").
+		Where("product_id = ? AND warehouse_id = ? AND status = ?", productID, warehouseID, ReservationActive).
+		Scan(&sum).Error
+	return sum, err
+}
+
+// Receive records a RECEIVE ledger entry and increments the product quantity
+// in a single DB transaction, scoped to the movement's warehouse (DEFAULT
+// when omitted). The inventory row is upserted per (product, warehouse) pair
+// and products with no existing row start from zero, so the first receive
+// creates it.
+func (r *GORMRepository) Receive(ctx context.Context, m Movement) (*Inventory, error) {
 	whID, err := r.resolveWarehouse(ctx, m.WarehouseID)
 	if err != nil {
 		return nil, err
@@ -71,8 +127,9 @@ func (r *GORMRepository) StockIn(ctx context.Context, m Movement) (*Inventory, e
 		switch err {
 		case nil:
 			inv.Quantity += m.Quantity
+			inv.Version++
 		case gorm.ErrRecordNotFound:
-			inv = Inventory{ProductID: m.ProductID, WarehouseID: whID, Quantity: m.Quantity}
+			inv = Inventory{ProductID: m.ProductID, WarehouseID: whID, Quantity: m.Quantity, Version: 1}
 		default:
 			return err
 		}
@@ -80,14 +137,19 @@ func (r *GORMRepository) StockIn(ctx context.Context, m Movement) (*Inventory, e
 		if err := tx.Save(&inv).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&InventoryTransaction{
-			ProductID:   m.ProductID,
-			Type:        "IN",
-			Quantity:    m.Quantity,
-			UnitCost:    m.UnitCost,
-			Note:        m.Note,
-			UserID:      m.UserID,
-			WarehouseID: &whID,
+		if err := tx.Create(&LedgerEntry{
+			ProductID:       m.ProductID,
+			WarehouseID:     whID,
+			TransactionType: LedgerReceive,
+			Direction:       "IN",
+			Quantity:        m.Quantity,
+			UnitCost:        m.UnitCost,
+			TotalCost:       TotalCostOf(m.Quantity, m.UnitCost),
+			Note:            m.Note,
+			PerformedBy:     m.UserID,
+			ReferenceType:   m.ReferenceType,
+			ReferenceID:     m.ReferenceID,
+			Reason:          m.Reason,
 		}).Error; err != nil {
 			return err
 		}
@@ -103,11 +165,11 @@ func (r *GORMRepository) StockIn(ctx context.Context, m Movement) (*Inventory, e
 	return &result, nil
 }
 
-// StockOut records an OUT movement and decrements the product quantity in a
-// single transaction, scoped to the movement's warehouse (DEFAULT when
+// Issue records an ISSUE ledger entry and decrements the product quantity in
+// a single transaction, scoped to the movement's warehouse (DEFAULT when
 // omitted). It rejects any draw that would push stock below zero, returning
-// ErrConflict and rolling back so no partial history row remains.
-func (r *GORMRepository) StockOut(ctx context.Context, m Movement) (*Inventory, error) {
+// ErrInsufficientStock and rolling back so no partial ledger row remains.
+func (r *GORMRepository) Issue(ctx context.Context, m Movement) (*Inventory, error) {
 	whID, err := r.resolveWarehouse(ctx, m.WarehouseID)
 	if err != nil {
 		return nil, err
@@ -125,22 +187,43 @@ func (r *GORMRepository) StockOut(ctx context.Context, m Movement) (*Inventory, 
 			return err
 		}
 
-		if inv.Quantity < m.Quantity {
-			return sharederr.ErrConflict
+		// Lazy expiry first, then availability = on hand − active reserved
+		// (PRD §20: issued quantity must come from available stock).
+		released, err := expireStaleReservations(tx, m.ProductID, whID)
+		if err != nil {
+			return err
+		}
+		if released > 0 {
+			if err := tx.First(&inv, "product_id = ? AND warehouse_id = ?", m.ProductID, whID).Error; err != nil {
+				return err
+			}
+		}
+		active, err := activeReservedQuantity(tx, m.ProductID, whID)
+		if err != nil {
+			return err
+		}
+		if inv.Quantity-active < m.Quantity {
+			return sharederr.ErrInsufficientStock
 		}
 		inv.Quantity -= m.Quantity
+		inv.Version++
 
 		if err := tx.Save(&inv).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&InventoryTransaction{
-			ProductID:   m.ProductID,
-			Type:        "OUT",
-			Quantity:    m.Quantity,
-			UnitCost:    m.UnitCost,
-			Note:        m.Note,
-			UserID:      m.UserID,
-			WarehouseID: &whID,
+		if err := tx.Create(&LedgerEntry{
+			ProductID:       m.ProductID,
+			WarehouseID:     whID,
+			TransactionType: LedgerIssue,
+			Direction:       "OUT",
+			Quantity:        m.Quantity,
+			UnitCost:        m.UnitCost,
+			TotalCost:       TotalCostOf(m.Quantity, m.UnitCost),
+			Note:            m.Note,
+			PerformedBy:     m.UserID,
+			ReferenceType:   m.ReferenceType,
+			ReferenceID:     m.ReferenceID,
+			Reason:          m.Reason,
 		}).Error; err != nil {
 			return err
 		}
@@ -181,7 +264,8 @@ func (r *GORMRepository) Transfer(ctx context.Context, t Transfer) (*Inventory, 
 			}
 		}
 
-		// Lock and decrement the source row.
+		// Lock the source row, lazily expire reservations, then check
+		// availability = on hand − active reserved at the source.
 		var src Inventory
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("product_id = ? AND warehouse_id = ?", t.ProductID, t.FromWarehouseID).First(&src).Error
@@ -191,10 +275,24 @@ func (r *GORMRepository) Transfer(ctx context.Context, t Transfer) (*Inventory, 
 		if err != nil {
 			return err
 		}
-		if src.Quantity < t.Quantity {
-			return sharederr.ErrConflict
+		released, err := expireStaleReservations(tx, t.ProductID, t.FromWarehouseID)
+		if err != nil {
+			return err
+		}
+		if released > 0 {
+			if err := tx.First(&src, "product_id = ? AND warehouse_id = ?", t.ProductID, t.FromWarehouseID).Error; err != nil {
+				return err
+			}
+		}
+		active, err := activeReservedQuantity(tx, t.ProductID, t.FromWarehouseID)
+		if err != nil {
+			return err
+		}
+		if src.Quantity-active < t.Quantity {
+			return sharederr.ErrInsufficientStock
 		}
 		src.Quantity -= t.Quantity
+		src.Version++
 		if err := tx.Save(&src).Error; err != nil {
 			return err
 		}
@@ -206,11 +304,12 @@ func (r *GORMRepository) Transfer(ctx context.Context, t Transfer) (*Inventory, 
 		switch err {
 		case nil:
 			dst.Quantity += t.Quantity
+			dst.Version++
 			if err := tx.Save(&dst).Error; err != nil {
 				return err
 			}
 		case gorm.ErrRecordNotFound:
-			dst = Inventory{ProductID: t.ProductID, WarehouseID: t.ToWarehouseID, Quantity: t.Quantity}
+			dst = Inventory{ProductID: t.ProductID, WarehouseID: t.ToWarehouseID, Quantity: t.Quantity, Version: 1}
 			if err := tx.Create(&dst).Error; err != nil {
 				return err
 			}
@@ -218,26 +317,34 @@ func (r *GORMRepository) Transfer(ctx context.Context, t Transfer) (*Inventory, 
 			return err
 		}
 
-		// Two history rows sharing one transfer_id.
-		if err := tx.Create(&InventoryTransaction{
-			ProductID:   t.ProductID,
-			Type:        "OUT",
-			Quantity:    t.Quantity,
-			Note:        t.Note,
-			UserID:      t.UserID,
-			WarehouseID: &t.FromWarehouseID,
-			TransferID:  &transferID,
+		// Two ledger rows sharing one transfer_id.
+		if err := tx.Create(&LedgerEntry{
+			ProductID:       t.ProductID,
+			WarehouseID:     t.FromWarehouseID,
+			TransactionType: LedgerTransferOut,
+			Direction:       "OUT",
+			Quantity:        t.Quantity,
+			Note:            t.Note,
+			PerformedBy:     t.UserID,
+			TransferID:      &transferID,
+			ReferenceType:   t.ReferenceType,
+			ReferenceID:     t.ReferenceID,
+			Reason:          t.Reason,
 		}).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&InventoryTransaction{
-			ProductID:   t.ProductID,
-			Type:        "IN",
-			Quantity:    t.Quantity,
-			Note:        t.Note,
-			UserID:      t.UserID,
-			WarehouseID: &t.ToWarehouseID,
-			TransferID:  &transferID,
+		if err := tx.Create(&LedgerEntry{
+			ProductID:       t.ProductID,
+			WarehouseID:     t.ToWarehouseID,
+			TransactionType: LedgerTransferIn,
+			Direction:       "IN",
+			Quantity:        t.Quantity,
+			Note:            t.Note,
+			PerformedBy:     t.UserID,
+			TransferID:      &transferID,
+			ReferenceType:   t.ReferenceType,
+			ReferenceID:     t.ReferenceID,
+			Reason:          t.Reason,
 		}).Error; err != nil {
 			return err
 		}
@@ -291,6 +398,8 @@ func (r *GORMRepository) List(ctx context.Context, q ListQuery) ([]*InventoryVie
 		"products.sku AS product_sku",
 		"products.name AS product_name",
 		"COALESCE(SUM(inventory.quantity), 0) AS quantity",
+		"COALESCE(SUM(inventory.reserved_quantity), 0) AS reserved_quantity",
+		"COALESCE(MAX(inventory.version), 0) AS version",
 		"COALESCE(MAX(inventory.updated_at), products.created_at) AS updated_at",
 	}, ", ")).
 		Group("products.id, products.sku, products.name, products.created_at")
@@ -309,29 +418,38 @@ func (r *GORMRepository) List(ctx context.Context, q ListQuery) ([]*InventoryVie
 	return views, total, nil
 }
 
-// Transactions returns a filtered, paginated history of stock movements joined
-// with product identity. Filters are parameterized and the type value is
-// validated before reaching the query builder.
-func (r *GORMRepository) Transactions(ctx context.Context, q TransactionQuery) ([]*TransactionView, int64, error) {
-	db := r.db.WithContext(ctx).Table("inventory_transactions AS t").
-		Select(strings.Join([]string{
-			"t.id", "t.product_id", "p.sku AS product_sku",
-			"p.name AS product_name", "t.type", "t.quantity",
-			"t.unit_cost", "t.note", "t.user_id", "t.warehouse_id", "t.transfer_id", "t.created_at",
-		}, ", ")).
-		Joins("JOIN products p ON p.id = t.product_id")
-
-	if q.ProductID != uuid.Nil {
-		db = db.Where("t.product_id = ?", q.ProductID)
-	}
-	if q.WarehouseID != nil {
-		db = db.Where("t.warehouse_id = ?", *q.WarehouseID)
-	}
-	if q.Type != "" && q.Type != "IN" && q.Type != "OUT" {
+// Ledger returns a filtered, paginated ledger history joined with product
+// identity. The running balance per (product, warehouse) pair is computed on
+// read with a window function: inflows (everything except ISSUE and
+// TRANSFER_OUT) add, outflows subtract — so the balance can never disagree
+// with the rows it summarizes.
+func (r *GORMRepository) Ledger(ctx context.Context, q LedgerQuery) ([]*LedgerView, int64, error) {
+	if q.Type != "" && !ledgerTypeSet[q.Type] {
 		return nil, 0, sharederr.ErrValidation
 	}
+
+	balanceExpr := `SUM(CASE WHEN l.direction = 'OUT' THEN -l.quantity ELSE l.quantity END)
+		OVER (PARTITION BY l.product_id, l.warehouse_id ORDER BY l.created_at, l.id)`
+
+	db := r.db.WithContext(ctx).Table("inventory_ledger AS l").
+		Select(strings.Join([]string{
+			"l.id", "l.product_id", "p.sku AS product_sku",
+			"p.name AS product_name", "l.transaction_type", "l.direction", "l.quantity",
+			"(" + balanceExpr + ") AS balance",
+			"l.unit_cost", "l.total_cost", "l.note", "l.performed_by",
+			"l.warehouse_id", "l.transfer_id",
+			"l.reference_type", "l.reference_id", "l.reason", "l.created_at",
+		}, ", ")).
+		Joins("JOIN products p ON p.id = l.product_id")
+
+	if q.ProductID != uuid.Nil {
+		db = db.Where("l.product_id = ?", q.ProductID)
+	}
+	if q.WarehouseID != nil {
+		db = db.Where("l.warehouse_id = ?", *q.WarehouseID)
+	}
 	if q.Type != "" {
-		db = db.Where("t.type = ?", q.Type)
+		db = db.Where("l.transaction_type = ?", q.Type)
 	}
 
 	var total int64
@@ -340,12 +458,305 @@ func (r *GORMRepository) Transactions(ctx context.Context, q TransactionQuery) (
 	}
 
 	p, per := dbutil.NormalizePage(q.Page, q.PerPage)
-	var views []*TransactionView
-	if err := db.Order("t.created_at DESC, t.id DESC").
+	var views []*LedgerView
+	if err := db.Order("l.created_at DESC, l.id DESC").
 		Offset((p - 1) * per).
 		Limit(per).
 		Scan(&views).Error; err != nil {
 		return nil, 0, err
 	}
 	return views, total, nil
+}
+
+// CreateReservation reserves available stock for a reference, in a single
+// transaction: lock the inventory row, lazily expire stale reservations,
+// verify availability, bump reserved_quantity, and insert the ACTIVE row.
+func (r *GORMRepository) CreateReservation(ctx context.Context, rsv Reservation) (*Reservation, error) {
+	var result Reservation
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Existence checks → 404 semantics.
+		var prodCount, whCount int64
+		if err := tx.Table("products").Where("id = ?", rsv.ProductID).Count(&prodCount).Error; err != nil {
+			return err
+		}
+		if prodCount == 0 {
+			return sharederr.ErrNotFound
+		}
+		if err := tx.Table("warehouses").Where("id = ?", rsv.WarehouseID).Count(&whCount).Error; err != nil {
+			return err
+		}
+		if whCount == 0 {
+			return sharederr.ErrNotFound
+		}
+
+		var inv Inventory
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("product_id = ? AND warehouse_id = ?", rsv.ProductID, rsv.WarehouseID).First(&inv).Error
+		if err == gorm.ErrRecordNotFound {
+			// No stock row means nothing on hand and nothing reserved.
+			return sharederr.ErrInsufficientStock
+		}
+		if err != nil {
+			return err
+		}
+
+		if _, err := expireStaleReservations(tx, rsv.ProductID, rsv.WarehouseID); err != nil {
+			return err
+		}
+		active, err := activeReservedQuantity(tx, rsv.ProductID, rsv.WarehouseID)
+		if err != nil {
+			return err
+		}
+		if inv.Quantity-active < rsv.Quantity {
+			return sharederr.ErrInsufficientStock
+		}
+
+		inv.ReservedQuantity += rsv.Quantity
+		inv.Version++
+		if err := tx.Save(&inv).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&rsv).Error; err != nil {
+			return err
+		}
+		result = rsv
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ReleaseReservation returns a reservation's quantity to available stock.
+func (r *GORMRepository) ReleaseReservation(ctx context.Context, id uuid.UUID) (*Reservation, error) {
+	var result Reservation
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var rsv Reservation
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&rsv, "id = ?", id).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return sharederr.ErrNotFound
+			}
+			return err
+		}
+		if rsv.Status != ReservationActive {
+			return sharederr.ErrConflict
+		}
+
+		var inv Inventory
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("product_id = ? AND warehouse_id = ?", rsv.ProductID, rsv.WarehouseID).First(&inv).Error; err != nil {
+			return err
+		}
+		inv.ReservedQuantity = max(0, inv.ReservedQuantity-rsv.Quantity)
+		inv.Version++
+		if err := tx.Save(&inv).Error; err != nil {
+			return err
+		}
+
+		rsv.Status = ReservationReleased
+		if err := tx.Save(&rsv).Error; err != nil {
+			return err
+		}
+		result = rsv
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ConsumeReservation converts an ACTIVE reservation into an ISSUE: stock and
+// reserved_quantity both drop by the reserved amount, one ISSUE ledger entry
+// is written referencing the reservation, and the reservation is CONSUMED —
+// all atomically.
+func (r *GORMRepository) ConsumeReservation(ctx context.Context, id uuid.UUID, userID *uuid.UUID) (*Reservation, *Inventory, error) {
+	var rsvResult Reservation
+	var invResult Inventory
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var rsv Reservation
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&rsv, "id = ?", id).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return sharederr.ErrNotFound
+			}
+			return err
+		}
+		if rsv.Status != ReservationActive {
+			return sharederr.ErrConflict
+		}
+
+		var inv Inventory
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("product_id = ? AND warehouse_id = ?", rsv.ProductID, rsv.WarehouseID).First(&inv).Error; err != nil {
+			return err
+		}
+		if inv.Quantity < rsv.Quantity {
+			return sharederr.ErrInsufficientStock
+		}
+		inv.Quantity -= rsv.Quantity
+		inv.ReservedQuantity = max(0, inv.ReservedQuantity-rsv.Quantity)
+		inv.Version++
+		if err := tx.Save(&inv).Error; err != nil {
+			return err
+		}
+
+		refType := "reservation"
+		refID := rsv.ID.String()
+		if err := tx.Create(&LedgerEntry{
+			ProductID:       rsv.ProductID,
+			WarehouseID:     rsv.WarehouseID,
+			TransactionType: LedgerIssue,
+			Direction:       "OUT",
+			Quantity:        rsv.Quantity,
+			Note:            nil,
+			PerformedBy:     userID,
+			ReferenceType:   &refType,
+			ReferenceID:     &refID,
+		}).Error; err != nil {
+			return err
+		}
+
+		rsv.Status = ReservationConsumed
+		if err := tx.Save(&rsv).Error; err != nil {
+			return err
+		}
+		rsvResult = rsv
+		invResult = inv
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return &rsvResult, &invResult, nil
+}
+
+// ReservationQuery filters and paginates reservations.
+type ReservationQuery struct {
+	ProductID   uuid.UUID
+	WarehouseID *uuid.UUID
+	Status      string
+	Page        int
+	PerPage     int
+}
+
+// ReservationView is a reservation joined with its product identity.
+type ReservationView struct {
+	ID            uuid.UUID `gorm:"column:id"`
+	ProductID     uuid.UUID `gorm:"column:product_id"`
+	ProductSKU    string    `gorm:"column:product_sku"`
+	ProductName   string    `gorm:"column:product_name"`
+	WarehouseID   uuid.UUID `gorm:"column:warehouse_id"`
+	Quantity      int       `gorm:"column:quantity"`
+	ReferenceType string    `gorm:"column:reference_type"`
+	ReferenceID   string    `gorm:"column:reference_id"`
+	Status        string    `gorm:"column:status"`
+	ExpiresAt     *string   `gorm:"column:expires_at"`
+	CreatedAt     string    `gorm:"column:created_at"`
+}
+
+// Reservations lists reservations with lazy expiry applied to the filtered
+// scope first, so expired rows surface as EXPIRED without a worker.
+func (r *GORMRepository) Reservations(ctx context.Context, q ReservationQuery) ([]*ReservationView, int64, error) {
+	if q.Status != "" && !reservationStatusSet[q.Status] {
+		return nil, 0, sharederr.ErrValidation
+	}
+
+	db := r.db.WithContext(ctx).Table("inventory_reservations AS r").
+		Select(strings.Join([]string{
+			"r.id", "r.product_id", "p.sku AS product_sku", "p.name AS product_name",
+			"r.warehouse_id", "r.quantity", "r.reference_type", "r.reference_id",
+			"r.status", "to_char(r.expires_at, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS expires_at",
+			"to_char(r.created_at, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at",
+		}, ", ")).
+		Joins("JOIN products p ON p.id = r.product_id")
+
+	if q.ProductID != uuid.Nil {
+		db = db.Where("r.product_id = ?", q.ProductID)
+	}
+	if q.WarehouseID != nil {
+		db = db.Where("r.warehouse_id = ?", *q.WarehouseID)
+	}
+	if q.Status != "" {
+		db = db.Where("r.status = ?", q.Status)
+	} else {
+		db = db.Where("r.status = ?", ReservationActive)
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	p, per := dbutil.NormalizePage(q.Page, q.PerPage)
+	var views []*ReservationView
+	if err := db.Order("r.created_at DESC, r.id DESC").
+		Offset((p - 1) * per).
+		Limit(per).
+		Scan(&views).Error; err != nil {
+		return nil, 0, err
+	}
+	return views, total, nil
+}
+
+// ApplyCorrection sets stock to an exact counted quantity and writes a
+// single ADJUSTMENT ledger entry capturing the delta — atomically. This is
+// the only path by which stock may deviate from movements (PRD §23).
+func (r *GORMRepository) ApplyCorrection(ctx context.Context, productID, warehouseID uuid.UUID, targetQuantity int, referenceType, referenceID, reason string, userID *uuid.UUID) (*Inventory, error) {
+	var result Inventory
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var inv Inventory
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("product_id = ? AND warehouse_id = ?", productID, warehouseID).First(&inv).Error
+		switch err {
+		case nil:
+			// existing row: adjust to target below
+		case gorm.ErrRecordNotFound:
+			// Correcting a SKU with no stock row creates it at the target.
+			inv = Inventory{ProductID: productID, WarehouseID: warehouseID, Quantity: 0, Version: 1}
+		default:
+			return err
+		}
+
+		before := inv.Quantity
+		delta := targetQuantity - before
+
+		inv.Quantity = targetQuantity
+		inv.Version++
+		if err := tx.Save(&inv).Error; err != nil {
+			return err
+		}
+
+		qty := delta
+		if qty < 0 {
+			qty = -qty
+		}
+		if qty == 0 {
+			// Target equals current stock: nothing to record.
+			result = inv
+			return nil
+		}
+		refType := referenceType
+		refID := referenceID
+		reasonText := reason
+		if err := tx.Create(&LedgerEntry{
+			ProductID:       productID,
+			WarehouseID:     warehouseID,
+			TransactionType: LedgerAdjustment,
+			Direction:       "IN",
+			Quantity:        qty,
+			PerformedBy:     userID,
+			ReferenceType:   &refType,
+			ReferenceID:     &refID,
+			Reason:          &reasonText,
+		}).Error; err != nil {
+			return err
+		}
+		result = inv
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }

@@ -19,7 +19,7 @@ var testModels = []any{
 	&category.Category{},
 	&product.Product{},
 	&Inventory{},
-	&InventoryTransaction{},
+	&LedgerEntry{},
 }
 
 func setupTestDB(t *testing.T) *gorm.DB {
@@ -31,6 +31,9 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		db.Exec("DROP TABLE IF EXISTS activity_logs CASCADE")
 		db.Exec("DROP TABLE IF EXISTS refresh_tokens CASCADE")
 		db.Exec("DROP TABLE IF EXISTS inventory_transactions CASCADE")
+		db.Exec("DROP TABLE IF EXISTS inventory_ledger CASCADE")
+		db.Exec("DROP TABLE IF EXISTS inventory_reservations CASCADE")
+		db.Exec("DROP TABLE IF EXISTS warehouses CASCADE")
 		db.Exec("DROP TABLE IF EXISTS inventory CASCADE")
 		db.Exec("DROP TABLE IF EXISTS products CASCADE")
 		db.Exec("DROP TABLE IF EXISTS categories CASCADE")
@@ -64,13 +67,13 @@ func TestInventory_AutoMigrate(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, invExists, "inventory table should exist")
 
-	// Verify inventory_transactions table exists
-	var txnExists bool
+	// Verify inventory_ledger table exists
+	var ledgerExists bool
 	err = db.Raw("SELECT EXISTS (SELECT FROM information_schema.tables " +
-		"WHERE table_schema = 'public' AND table_name = 'inventory_transactions')").
-		Scan(&txnExists).Error
+		"WHERE table_schema = 'public' AND table_name = 'inventory_ledger')").
+		Scan(&ledgerExists).Error
 	require.NoError(t, err)
-	assert.True(t, txnExists, "inventory_transactions table should exist")
+	assert.True(t, ledgerExists, "inventory_ledger table should exist")
 
 	// Verify unique index on inventory.product_id
 	var uniqueExists bool
@@ -174,7 +177,7 @@ func TestInventory_UniqueProductWarehousePair(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate key", "same (product, warehouse) pair must be unique")
 }
 
-func TestInventoryTransaction_Create(t *testing.T) {
+func TestLedgerEntry_Create(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DB test in short mode")
 	}
@@ -200,9 +203,10 @@ func TestInventoryTransaction_Create(t *testing.T) {
 	// When
 	unitCost := 80.00
 	note := "Initial stock"
-	txn := InventoryTransaction{
+	txn := LedgerEntry{
 		ProductID: prod.ID,
-		Type:      "IN",
+		TransactionType: LedgerReceive,
+		Direction:       "IN",
 		Quantity:  100,
 		UnitCost:  &unitCost,
 		Note:      &note,
@@ -213,7 +217,7 @@ func TestInventoryTransaction_Create(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, txn.ID)
 	assert.Equal(t, prod.ID, txn.ProductID)
-	assert.Equal(t, "IN", txn.Type)
+	assert.Equal(t, LedgerReceive, txn.TransactionType)
 	assert.Equal(t, 100, txn.Quantity)
 	require.NotNil(t, txn.UnitCost)
 	assert.Equal(t, 80.00, *txn.UnitCost)
@@ -233,13 +237,13 @@ func TestInventory_TableName(t *testing.T) {
 	assert.Equal(t, "inventory", tableName)
 }
 
-func TestInventoryTransaction_TableName(t *testing.T) {
+func TestLedgerEntry_TableName(t *testing.T) {
 	// Given
-	txn := InventoryTransaction{}
+	txn := LedgerEntry{}
 
 	// When
 	tableName := txn.TableName()
 
 	// Then
-	assert.Equal(t, "inventory_transactions", tableName)
+	assert.Equal(t, "inventory_ledger", tableName)
 }

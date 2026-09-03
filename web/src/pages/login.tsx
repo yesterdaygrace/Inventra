@@ -3,8 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Boxes, Loader2, UserPlus } from "lucide-react";
+import { Loader2, UserPlus } from "lucide-react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "@/components/ui";
+import { Logo } from "@/components/ui/logo";
 import { useAuth } from "@/lib/auth";
 import { isApiError } from "@/lib/api";
 
@@ -55,20 +56,22 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Boxes className="h-6 w-6" />
+          <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 shadow-sm">
+            <Logo className="h-10 w-10" />
           </div>
-          <CardTitle className="text-2xl">Sign in to Inventra</CardTitle>
-          <CardDescription>Inventory management for your enterprise</CardDescription>
+          <CardTitle className="text-3xl font-semibold tracking-tight">Sign in to Inventra</CardTitle>
+          <CardDescription className="text-balance">
+            Inventory management built for your team
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4" noValidate>
             {formError && (
               <div
                 role="alert"
-                className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
               >
                 {formError}
               </div>
@@ -95,6 +98,7 @@ export function LoginPage() {
                 id="password"
                 type="password"
                 autoComplete="current-password"
+                placeholder="Enter your password"
                 error={!!errors.password}
                 {...register("password")}
               />
@@ -109,7 +113,7 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <div className="my-4 flex items-center gap-3">
+          <div className="my-5 flex items-center gap-3">
             <span className="h-px flex-1 bg-border" />
             <span className="text-xs text-muted-foreground">or</span>
             <span className="h-px flex-1 bg-border" />

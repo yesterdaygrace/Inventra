@@ -12,17 +12,22 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"inventory/internal/auth"
 	sharederr "inventory/internal/shared/errors"
 )
 
 type fakeParser struct {
 	userID uuid.UUID
 	role   string
+	perms  []string
 	err    error
 }
 
-func (p fakeParser) ParseAccessToken(string) (uuid.UUID, string, error) {
-	return p.userID, p.role, p.err
+func (p fakeParser) ParseAccessToken(string) (uuid.UUID, string, []string, error) {
+	if p.perms != nil {
+		return p.userID, p.role, p.perms, p.err
+	}
+	return p.userID, p.role, auth.PermissionSetForRole(p.role), p.err
 }
 
 func setupEngine(repo Repository) *gin.Engine {
@@ -56,7 +61,7 @@ func TestSummaryOK(t *testing.T) {
 
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.True(t, body["success"].(bool))
+	assert.Contains(t, body, "data")
 	data := body["data"].(map[string]any)
 	assert.Equal(t, float64(3), data["total_products"])
 	assert.Equal(t, float64(1), data["total_categories"])
@@ -71,10 +76,10 @@ func TestActivityOK(t *testing.T) {
 
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.True(t, body["success"].(bool))
+	assert.Contains(t, body, "data")
 	items := body["data"].([]any)
 	require.Len(t, items, 1)
-	pg := body["pagination"].(map[string]any)
+	pg := body["meta"].(map[string]any)
 	assert.Equal(t, float64(1), pg["total"])
 }
 

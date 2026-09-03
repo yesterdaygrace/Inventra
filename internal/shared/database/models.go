@@ -4,6 +4,8 @@ package database
 
 import (
 	"inventory/internal/activitylog"
+	"inventory/internal/adjustment"
+	"inventory/internal/cyclecount"
 	"inventory/internal/auth"
 	"inventory/internal/category"
 	"inventory/internal/inventory"
@@ -21,16 +23,26 @@ func Models() []any {
 		&auth.Role{},
 		&category.Category{},
 		&warehouses.Warehouse{},
+		// Permission catalog + role mapping (authority comes from Role)
+		&auth.Permission{},
+		&auth.RolePermission{},
 		// User depends on Role
 		&auth.User{},
 		// Product depends on Category
 		&product.Product{},
 		// Inventory tables depend on Product and Warehouse
 		&inventory.Inventory{},
-		&inventory.InventoryTransaction{},
+		&inventory.LedgerEntry{},
+		&inventory.Reservation{},
 		// RefreshToken depends on User
 		&auth.RefreshToken{},
 		// ActivityLog depends on User
 		&activitylog.ActivityLog{},
+		// Adjustments depend on Product and Warehouse
+		&adjustment.Adjustment{},
+		&adjustment.SystemSetting{},
+		// Cycle counts depend on Warehouse and Product
+		&cyclecount.Plan{},
+		&cyclecount.Item{},
 	}
 }

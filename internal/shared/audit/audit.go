@@ -14,6 +14,11 @@ type Entry struct {
 	EntityID   *string
 	Details    any
 	IP         *string
+	Reason     *string
+	UserAgent  *string
+	RequestID  *string
+	BeforeData any
+	AfterData  any
 }
 
 // Recorder persists audit events. Implementations (activitylog.Service)

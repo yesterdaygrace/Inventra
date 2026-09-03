@@ -10,6 +10,7 @@
 ## 1. Base Conventions
 
 - **Base path:** `/api/v1` for all module routes. Healthcheck: `GET /healthz`.
+  Readiness (DB ping): `GET /ready` → `200 {"status":"ready"}` or `503 {"status":"unavailable"}`.
 - **Response envelope (always):**
   ```json
   {
@@ -20,23 +21,28 @@
   }
   ```
   - `data` is the payload; `pagination` present only on paginated list responses.
-  - Error responses: `{ "success": false, "message": "<reason>" }` (no `data`, no `pagination`).
+  - Error responses: `{ "success": false, "code": "<code>", "message": "<reason>" }` (no `data`, no `pagination`).
+    `code` is a stable machine-readable identifier; `message` is human-readable.
 - **Content types:** requests and responses `application/json`.
 - **Request ID:** every response echoes `X-Request-ID`; propagated through logging.
 - **Auth:** protected routes require `Authorization: Bearer <access_token>`.
 
 ### 1.1 Error codes and HTTP mapping
 
-| Typed error | HTTP status | Example message |
-|---|---|---|
-| `ErrValidation` | `400 Bad Request` | `validation failed: <details>` |
-| `ErrUnauthorized` | `401 Unauthorized` | `unauthorized` |
-| `ErrForbidden` | `403 Forbidden` | `forbidden` |
-| `ErrNotFound` | `404 Not Found` | `not found` |
-| `ErrConflict` | `409 Conflict` | `conflict` |
-| `ErrInternal` (fallback) | `500 Internal Server Error` | `internal server error` |
+| Typed error | HTTP status | Stable `code` | Example message |
+|---|---|---|---|
+| `ErrValidation` | `400 Bad Request` | `VALIDATION_FAILED` | `validation failed: <details>` |
+| `ErrUnauthorized` | `401 Unauthorized` | `UNAUTHORIZED` | `unauthorized` |
+| `ErrForbidden` | `403 Forbidden` | `FORBIDDEN` | `forbidden` |
+| `ErrNotFound` | `404 Not Found` | `NOT_FOUND` | `not found` |
+| `ErrConflict` | `409 Conflict` | `CONFLICT` | `conflict` |
+| `ErrInsufficientStock` | `409 Conflict` | `INSUFFICIENT_STOCK` | `conflict: insufficient stock` |
+| `ErrDuplicateRequest` | `409 Conflict` | `DUPLICATE_REQUEST` | `conflict: duplicate request` |
+| `ErrRateLimited` | `429 Too Many Requests` | `RATE_LIMITED` | `rate limit exceeded` |
+| `ErrInternal` (fallback) | `500 Internal Server Error` | `INTERNAL_ERROR` | `internal server error` |
 
-All DTO validation uses the shared `validator` wrapper (go-playground/validator/v10).
+Clients should branch on `code`, never on parsed messages. All DTO validation uses
+the shared `validator` wrapper (go-playground/validator/v10).
 
 ### 1.2 Pagination
 
@@ -47,42 +53,42 @@ Response envelope carries `pagination` object: `page`, `per_page`, `total`, `tot
 
 ## 2. RBAC Matrix
 
-| Route | Public | Any authenticated | STAFF | ADMIN |
-|---|---|---|---|---|
-| `POST /auth/register` | ✔ | – | – | – |
-| `POST /auth/login` | ✔ | – | – | – |
-| `POST /auth/refresh` | ✔ (refresh token) | – | – | – |
-| `POST /auth/demo` | ✔ (demo mode only) | – | – | – |
-| `POST /auth/logout` | – | ✔ | ✔ | ✔ |
-| `POST /auth/change-password` | – | ✔ | ✔ | ✔ |
-| `PUT /auth/profile` | – | ✔ | ✔ | ✔ |
-| `GET /auth/me` | – | ✔ | ✔ | ✔ |
-| `GET /users` | – | – | – | ✔ |
-| `GET /users/:id` | – | – | – | ✔ |
-| `PUT /users/:id` | – | – | – | ✔ |
-| `DELETE /users/:id` | – | – | – | ✔ |
-| `PUT /users/:id/role` | – | – | – | ✔ |
-| `GET /products` | ✔ | ✔ | ✔ | ✔ |
-| `POST /products` | – | – | – | ✔ |
-| `GET /products/:id` | ✔ | ✔ | ✔ | ✔ |
-| `PUT /products/:id` | – | – | – | ✔ |
-| `DELETE /products/:id` | – | – | – | ✔ |
-| `GET /categories` | ✔ | ✔ | ✔ | ✔ |
-| `POST /categories` | – | – | – | ✔ |
-| `PUT /categories/:id` | – | – | – | ✔ |
-| `DELETE /categories/:id` | – | – | – | ✔ |
-| `GET /warehouses` | ✔ | ✔ | ✔ | ✔ |
-| `POST /warehouses` | – | – | – | ✔ |
-| `PUT /warehouses/:id` | – | – | – | ✔ |
-| `DELETE /warehouses/:id` | – | – | – | ✔ |
-| `GET /inventory` | – | ✔ | ✔ | ✔ |
-| `POST /inventory/stock-in` | – | – | ✔ | ✔ |
-| `POST /inventory/stock-out` | – | – | ✔ | ✔ |
-| `POST /inventory/transfers` | – | – | ✔ | ✔ |
-| `GET /inventory/transactions` | – | ✔ | ✔ | ✔ |
-| `GET /inventory/export` | – | ✔ | ✔ | ✔ |
-| `GET /dashboard/summary` | – | ✔ | ✔ | ✔ |
-| `GET /dashboard/activity` | – | ✔ | ✔ | ✔ |
+| Route | Public | Any authenticated | Required permission |
+|---|---|---|---|
+| `POST /auth/register` | ✔ | – | – |
+| `POST /auth/login` | ✔ | – | – |
+| `POST /auth/refresh` | ✔ (refresh token) | – | – |
+| `POST /auth/demo` | ✔ (demo mode only) | – | – |
+| `POST /auth/logout` | – | ✔ | – |
+| `POST /auth/change-password` | – | ✔ | – |
+| `PUT /auth/profile` | – | ✔ | – |
+| `GET /auth/me` | – | ✔ | – |
+| `GET /users` | – | – | `user.read` |
+| `GET /users/:id` | – | – | `user.read` |
+| `PUT /users/:id` | – | – | `user.update` |
+| `DELETE /users/:id` | – | – | `user.deactivate` |
+| `PUT /users/:id/role` | – | – | `user.assign_role` |
+| `GET /products` | ✔ | ✔ | – |
+| `POST /products` | – | – | `product.create` |
+| `GET /products/:id` | ✔ | ✔ | – |
+| `PUT /products/:id` | – | – | `product.update` |
+| `DELETE /products/:id` | – | – | `product.delete` |
+| `GET /categories` | ✔ | ✔ | – |
+| `POST /categories` | – | – | `category.create` |
+| `PUT /categories/:id` | – | – | `category.update` |
+| `DELETE /categories/:id` | – | – | `category.delete` |
+| `GET /warehouses` | ✔ | ✔ | – |
+| `POST /warehouses` | – | – | `warehouse.create` |
+| `PUT /warehouses/:id` | – | – | `warehouse.update` |
+| `DELETE /warehouses/:id` | – | – | `warehouse.delete` |
+| `GET /inventory` | – | ✔ | – |
+| `POST /inventory/stock-in` | – | – | `inventory.stock_in` |
+| `POST /inventory/stock-out` | – | – | `inventory.stock_out` |
+| `POST /inventory/transfers` | – | – | `inventory.transfer` |
+| `GET /inventory/transactions` | – | ✔ | – |
+| `GET /inventory/export` | – | ✔ | – |
+| `GET /dashboard/summary` | – | ✔ | – |
+| `GET /dashboard/activity` | – | ✔ | – |
 
 Auth guard = presence of a valid bearer access token; role guard enforced via
 `RoleRequired(ROLE)` helper middleware. Valid token with insufficient role → `403 Forbidden`.
@@ -275,28 +281,46 @@ when `warehouse_id` is omitted.
 
 ### GET `/api/v1/inventory` — any authenticated
 - **Query:** `page`, `per_page`, `product_id`, `low_stock=true`, `search` (product name/SKU), `warehouse_id` (optional UUID).
-- **Response 200 (paginated):** `data: [ { product_id, product_sku, product_name, quantity, updated_at } ]` + `pagination`.
-  Every product is returned (left-joined), with quantity `0` when no stock row exists yet.
+- **Response 200 (paginated):** `data: [ { product_id, product_sku, product_name, quantity, reserved_quantity, version, updated_at } ]` + `pagination`.
+  Every product is returned (left-joined), with quantity `0` when no stock row exists yet. `reserved_quantity` is `0` until the reservation flow ships; `version` is the MAX across warehouses for the product.
 
 ### POST `/api/v1/inventory/stock-in` — STAFF / ADMIN
-- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional", "warehouse_id": "optional UUID" }`
+- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional", "warehouse_id": "optional UUID", "reference_type": "optional string", "reference_id": "optional string", "reason": "optional string" }`
+- **Headers:** `Idempotency-Key` (optional) — see [Idempotency contract](#idempotency-contract).
 - **Response 200:** `{ product_id, quantity, updated_at }`. Committed atomically with the history row.
   When `warehouse_id` is omitted the movement targets the seeded `DEFAULT` warehouse.
+  `reference_type`, `reference_id`, and `reason` are persisted on the `inventory_transactions` row as-is (NULL when omitted).
 
 ### POST `/api/v1/inventory/stock-out` — STAFF / ADMIN
-- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional", "warehouse_id": "optional UUID" }`
+- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "unit_cost": ">=0 optional", "note": "optional", "warehouse_id": "optional UUID", "reference_type": "optional string", "reference_id": "optional string", "reason": "optional string" }`
+- **Headers:** `Idempotency-Key` (optional) — see [Idempotency contract](#idempotency-contract).
 - **Response 200:** `{ product_id, quantity, updated_at }`.
 - **Errors:** 400 validation; 409 insufficient stock (quantity would go below 0), rolled back with no partial history row.
 
 ### POST `/api/v1/inventory/transfers` — STAFF / ADMIN
-- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "from_warehouse_id": "*", "to_warehouse_id": "*", "note": "optional" }`
+- **Request:** `{ "product_id": "*", "quantity": ">0 (required)", "from_warehouse_id": "*", "to_warehouse_id": "*", "note": "optional", "reference_type": "optional string", "reference_id": "optional string", "reason": "optional string" }`
+- **Headers:** `Idempotency-Key` (optional) — see [Idempotency contract](#idempotency-contract).
 - **Response 200:** `{ product_id, quantity, updated_at }` (the destination warehouse's updated quantity).
 - **Semantics:** single DB transaction — `SELECT ... FOR UPDATE` on the source row, decrement source, upsert destination, and write two history rows (`OUT` from source, `IN` to destination) sharing one `transfer_id`. Total stock across warehouses is conserved.
 - **Errors:** 400 validation (including `from == to`); 404 unknown product or warehouse; 409 insufficient stock at source (rolled back with no partial history rows).
 
+#### Idempotency contract (stock-in, stock-out, transfers)
+
+Stock-write routes accept an optional `Idempotency-Key` header. Semantics:
+
+- **No header** → current behavior unchanged (every request executes).
+- **Same key + identical body** → the second call returns the stored first response verbatim (same status + body); the stock movement happens exactly once.
+- **Same key + different body** → `409` (message `duplicate request`; `code: DUPLICATE_REQUEST` once C9 lands).
+- **Different keys, same body** → both execute (independent movements).
+- **Failed attempts** (non-2xx) are **not** stored — a corrected retry with the same key executes normally.
+- **Expired rows** (TTL 24h) are not replayed; a fresh attempt replaces them.
+
+The key is scoped per user + route, so identical keys from different users never collide.
+
 ### GET `/api/v1/inventory/transactions` — any authenticated
 - **Query:** `page`, `per_page`, `product_id`, `type=IN|OUT`, `warehouse_id` (optional UUID).
-- **Response 200 (paginated):** `data: [ { id, product_id, product_sku, product_name, type, quantity, unit_cost, note, user_id, warehouse_id, transfer_id, created_at } ]` + `pagination`.
+- **Response 200 (paginated):** `data: [ { id, product_id, product_sku, product_name, type, quantity, unit_cost, note, user_id, warehouse_id, transfer_id, reference_type, reference_id, reason, created_at } ]` + `pagination`.
+  `reference_type`, `reference_id`, `reason` are NULL when omitted by the caller.
 
 ### GET `/api/v1/inventory/export` — any authenticated
 - **Response 200:** CSV download (`attachment; filename=inventory_<ts>.csv`) with columns `product_id,sku,name,quantity,updated_at`.
@@ -320,7 +344,7 @@ when `warehouse_id` is omitted.
 
 ### GET `/api/v1/dashboard/activity` — any authenticated
 - **Query:** `page`, `per_page`.
-- **Response 200 (paginated):** `data: [ { id, user_name, action, entity_type, entity_id, details, ip, created_at } ]` (from `activity_logs`) + `pagination`.
+- **Response 200 (paginated):** `data: [ { id, user_name, action, entity_type, entity_id, details, ip, before_data, after_data, reason, user_agent, request_id, created_at } ]` (from `activity_logs`) + `pagination`. `before_data`/`after_data` capture pre/post quantity on stock operations; `reason`, `user_agent`, `request_id` are NULL when absent.
 
 ---
 

@@ -4,17 +4,48 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-5 [&_svg]:shrink-0",
+  [
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg",
+    "text-sm font-medium tracking-tight",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    "disabled:pointer-events-none disabled:opacity-50",
+    "[&_svg]:pointer-events-none [&_svg]:size-5 shrink-0",
+    "transition-[transform,background-color,border-color,box-shadow,color]",
+    "duration-150 [transition-timing-function:var(--ease-out-quad)]",
+    "active:scale-[0.97]",
+  ],
   {
     variants: {
       variant: {
-        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        success: "bg-health text-primary-foreground hover:bg-health/90",
-        warning: "bg-warning text-foreground hover:bg-warning/90",
-        danger: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        primary: [
+          "bg-primary text-primary-foreground",
+          "hover:bg-primary/90 hover:shadow-md",
+          "shadow transition-shadow",
+        ],
+        secondary: [
+          "bg-secondary text-secondary-foreground",
+          "hover:bg-secondary/80 hover:shadow",
+        ],
+        success: [
+          "bg-health text-primary-foreground",
+          "hover:bg-health/90 hover:shadow-md",
+        ],
+        warning: [
+          "bg-warning text-foreground",
+          "hover:bg-warning/90 hover:shadow-md",
+        ],
+        danger: [
+          "bg-destructive text-destructive-foreground",
+          "hover:bg-destructive/90 hover:shadow-md",
+        ],
+        ghost: [
+          "hover:bg-accent hover:text-accent-foreground",
+        ],
+        outline: [
+          "border border-input bg-background",
+          "hover:bg-accent hover:text-accent-foreground",
+        ],
       },
       size: {
         default: "h-9 px-4 py-2",
@@ -40,7 +71,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        {...props}
+      />
     );
   },
 );

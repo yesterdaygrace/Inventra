@@ -17,18 +17,16 @@ export function ErrorState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-8 text-center",
+        "flex flex-col items-center justify-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-center",
         className,
       )}
       role="alert"
     >
       <AlertTriangle className="h-6 w-6 text-destructive" />
-      <div>
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        {description && (
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {description && (
+        <p className="text-sm text-muted-foreground">{description}</p>
+      )}
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RefreshCw className="h-4 w-4" />
@@ -41,7 +39,7 @@ export function ErrorState({
 
 export function SkeletonCard({ className }: { className?: string }) {
   return (
-    <div className={cn("rounded-xl border border-border bg-card p-6", className)}>
+    <div className={cn("rounded-xl bg-card p-6", className)}>
       <Skeleton className="mb-3 h-4 w-1/3" />
       <Skeleton className="h-8 w-2/3" />
     </div>
