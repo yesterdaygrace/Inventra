@@ -5,10 +5,6 @@ Vite/TypeScript frontend. Contains role-based access control (ADMIN/STAFF),
 products, categories, inventory movements, activity audit log, dashboard
 aggregates, and CSV exports.
 
-> **Security warning:** the seeded default admin password is **`Admin123!`**.
-> Change it immediately after first login (`POST /api/v1/auth/change-password`
-> or the Profile page). Never ship it in production.
-
 ---
 
 ## Prerequisites
