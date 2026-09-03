@@ -13,7 +13,7 @@
 erDiagram
     roles {
         uuid id PK
-        text name UK "ADMIN,WAREHOUSE_MANAGER,STAFF,VIEWER"
+        text name UK "ADMIN"
         timestamptz created_at
     }
     permissions {
@@ -54,7 +54,7 @@ erDiagram
     }
     warehouses {
         uuid id PK
-        text code UK "DEFAULT, WH-001"
+        text code UK "DEFAULT"
         text name
         text description
         boolean is_active
@@ -66,9 +66,9 @@ erDiagram
         text name
         text sku UK
         text description
-        numeric price "12,2"
+        numeric price "12p2"
         uuid category_id FK
-        int low_stock_threshold ">=0 default 10"
+        int low_stock_threshold "gte0"
         boolean is_archived
         timestamptz created_at
         timestamptz updated_at
@@ -77,21 +77,21 @@ erDiagram
         uuid id PK
         uuid product_id FK
         uuid warehouse_id FK
-        int quantity ">=0"
-        int reserved_quantity ">=0"
+        int quantity "gte0"
+        int reserved_quantity "gte0"
         int version
         timestamptz updated_at
-        string UK "product_id+warehouse_id"
+        string UK "product-warehouse"
     }
     inventory_ledger {
         uuid id PK
         uuid product_id FK
         uuid warehouse_id FK
-        text transaction_type "7 types"
-        text direction "IN,OUT"
-        int quantity ">0"
+        text transaction_type "7types"
+        text direction "IN-OUT"
+        int quantity "gt0"
         numeric unit_cost
-        uuid transfer_id "groups 2 rows"
+        uuid transfer_id "transfer"
         uuid performed_by FK
         timestamptz created_at
     }
@@ -99,8 +99,8 @@ erDiagram
         uuid id PK
         uuid product_id FK
         uuid warehouse_id FK
-        int quantity ">0"
-        text status "ACTIVE,RELEASED,CONSUMED,EXPIRED"
+        int quantity "gt0"
+        text status "ACTIVE"
         timestamptz expires_at
         timestamptz created_at
     }
@@ -110,7 +110,7 @@ erDiagram
         uuid warehouse_id FK
         int system_quantity
         int counted_quantity
-        text status "PENDING,APPROVED,REJECTED"
+        text status "PENDING"
         uuid requested_by FK
         timestamptz created_at
     }
@@ -118,7 +118,7 @@ erDiagram
         uuid id PK
         uuid warehouse_id FK
         text name
-        text status "OPEN,COMPLETED"
+        text status "OPEN"
         timestamptz created_at
     }
     cycle_count_items {
