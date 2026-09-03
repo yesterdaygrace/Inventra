@@ -137,10 +137,12 @@ The 17 tables are grouped into 7 domains for readability — the “7 Tables” 
 
 ## ERD — Entity Relationship Diagram
 
-> Full 16-entity visual lives in `docs/er.md` (205-line Mermaid). **Interactive version:** open `docs/database-erd.html` in your browser — pan & zoom, searchable by table/column, domain-colored, click any table for columns/constraints/impact. This static Mermaid below is the printable **black-and-white** fallback.
+> **GitHub-safe:** this section is split into 3 small Mermaid blocks (each <7 entities, guaranteed to render on `github.com`). Full 16-entity view lives in `docs/er.md` (205-line Mermaid) and as an interactive searchable diagram at `docs/database-erd.html` (pan & zoom, domain colors). The fallback PNG is `docs/er.png` (see below).
+
+### ERD 1/3 — Identity & Auth (Core)
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"primaryColor":"#ffffff","primaryTextColor":"#000000","primaryBorderColor":"#000000","lineColor":"#000000","secondaryColor":"#ffffff","tertiaryColor":"#f5f5f5"}}}%%
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#ffffff","primaryTextColor":"#000000","primaryBorderColor":"#000000","lineColor":"#000000"}}}%%
 erDiagram
     roles {
         uuid id PK
@@ -158,49 +160,41 @@ erDiagram
     }
     users {
         uuid id PK
-        text name
         text email UK
-        text password_hash
         uuid role_id FK
         boolean is_active
-        timestamptz created_at
-        timestamptz updated_at
     }
     refresh_tokens {
         uuid id PK
         uuid user_id FK
         text token_hash UK
         uuid family_id
-        timestamptz expires_at
-        timestamptz revoked_at
-        timestamptz created_at
     }
+    roles ||--o{ users : has
+    roles ||--o{ role_permissions : grants
+    permissions ||--o{ role_permissions : granted_to
+    users ||--o{ refresh_tokens : owns
+```
+
+### ERD 2/3 — Catalog & Stock
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#ffffff","primaryTextColor":"#000000","primaryBorderColor":"#000000","lineColor":"#000000"}}}%%
+erDiagram
     categories {
         uuid id PK
         text name UK
-        text description
-        boolean is_active
-        timestamptz created_at
-        timestamptz updated_at
     }
     warehouses {
         uuid id PK
         text code UK "DEFAULT"
         text name
-        boolean is_active
-        timestamptz created_at
-        timestamptz updated_at
     }
     products {
         uuid id PK
-        text name
         text sku UK
-        numeric price "12p2"
         uuid category_id FK
         int low_stock_threshold "gte0"
-        boolean is_archived
-        timestamptz created_at
-        timestamptz updated_at
     }
     inventory {
         uuid id PK
@@ -209,60 +203,53 @@ erDiagram
         int quantity "gte0"
         int reserved_quantity "gte0"
         int version
-        timestamptz updated_at
         string UK "product-warehouse"
     }
+    categories ||--o{ products : contains
+    warehouses ||--o{ inventory : stocks
+    products ||--o{ inventory : has_per_warehouse
+```
+
+### ERD 3/3 — History, Reservations & Audit
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#ffffff","primaryTextColor":"#000000","primaryBorderColor":"#000000","lineColor":"#000000"}}}%%
+erDiagram
     inventory_ledger {
         uuid id PK
         uuid product_id FK
-        uuid warehouse_id FK
         text transaction_type "7types"
         text direction "IN-OUT"
         int quantity "gt0"
-        numeric unit_cost
         uuid transfer_id "transfer"
-        uuid performed_by FK
-        timestamptz created_at
     }
     inventory_reservations {
         uuid id PK
         uuid product_id FK
-        uuid warehouse_id FK
         int quantity "gt0"
         text status "ACTIVE"
-        timestamptz expires_at
-        timestamptz created_at
     }
     inventory_adjustments {
         uuid id PK
         uuid product_id FK
-        uuid warehouse_id FK
         int system_quantity
-        int counted_quantity
         text status "PENDING"
-        uuid requested_by FK
-        timestamptz created_at
     }
     cycle_count_plans {
         uuid id PK
         uuid warehouse_id FK
-        text name
         text status "OPEN"
-        timestamptz created_at
     }
     cycle_count_items {
         uuid id PK
         uuid plan_id FK
         uuid product_id FK
-        int system_quantity
         int counted_quantity
-        timestamptz counted_at
     }
     activity_logs {
         uuid id PK
         uuid user_id FK
         text action
-        text entity_type
         jsonb details
         jsonb before_data
         text ip
