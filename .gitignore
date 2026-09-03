@@ -45,7 +45,8 @@ web/node_modules/
 .playwright-mcp/
 playwright-report/
 test-results/
-/demo-*.png
+# demo screenshots are tracked for README gallery (do not ignore)
+!demo-*.png
 
 # Logs
 logs/

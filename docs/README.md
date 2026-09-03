@@ -8,6 +8,20 @@ A production-minded inventory management system built with **Go, PostgreSQL, Rea
 |---|---|
 | ![Dashboard](demo-05-dashboard-live.png) | ![Inventory](demo-13-inventory.png) |
 
+<details>
+<summary><b>View all 18 screenshots</b> — dashboard, products, categories, inventory, transactions, reports, users, activity, settings, responsive</summary>
+
+| Dashboard | Inventory | Transactions |
+|---|---|---|
+| ![Dashboard Live](demo-05-dashboard-live.png) | ![Inventory](demo-13-inventory.png) | ![Transactions](demo-14-transactions.png) |
+| ![Dashboard Dark](demo-06-dashboard-dark.png) | ![Inventory Overdraw](demo-16-inventory-overdraw.png) | ![Reports](demo-15-reports.png) |
+| ![Products List](demo-09-products-list.png) | ![Products Sort Export](demo-12-products-sort-export.png) | ![Products Archived](demo-11-products-archived-view.png) |
+| ![Categories Inactive](demo-10-categories-inactive-badge.png) | ![Users](demo-17-users.png) | ![Activity](demo-18-activity.png) |
+| ![Settings](demo-19-settings.png) | ![Dashboard Desktop](demo-08-dashboard-desktop.png) | ![Dashboard Mobile](demo-07-dashboard-mobile.png) |
+| ![Responsive Mobile](demo-20-responsive-mobile.png) | ![Responsive Tablet](demo-21-responsive-tablet.png) | ![Responsive Desktop](demo-22-responsive-desktop.png) |
+
+</details>
+
 ---
 
 ## Table of contents
