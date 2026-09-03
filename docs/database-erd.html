@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Inventra — Interactive Database ERD</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{font-family: Inter, system-ui, sans-serif}
+  .mono{font-family: JetBrains Mono, monospace}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:99px}
+  .hl{outline:2px solid #0ea5e9; outline-offset:2px; border-radius:8px; background:#f0f9ff !important}
+</style>
+<script>mermaid.initialize({startOnLoad:false, theme:'base', themeVariables:{primaryColor:'#ffffff', primaryTextColor:'#1e293b', primaryBorderColor:'#000000', lineColor:'#000000', tertiaryColor:'#f5f5f5'}, er:{diagramPadding:16}});</script>
+</head>
+<body class="bg-[#f8fafc] text-slate-800 antialiased">
+<header class="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-slate-200">
+  <div class="max-w-[1700px] mx-auto px-4 py-3 flex items-center gap-3">
+    <div class="w-8 h-8 rounded-lg bg-black text-white grid place-items-center font-bold text-sm">⧉</div>
+    <h1 class="text-[15px] font-semibold">Inventra — Database ERD <span class="font-normal text-slate-500">· interactive · black & white</span></h1>
+    <div class="ml-auto flex gap-2">
+      <a href="./database.md" class="text-xs px-3 py-1.5 rounded-lg border bg-white">database.md</a>
+      <a href="./er.md" class="text-xs px-3 py-1.5 rounded-lg border bg-white">er.md</a>
+    </div>
+  </div>
+  <div class="max-w-[1700px] mx-auto px-4 pb-2 flex gap-1.5">
+    <span class="text-[11px] font-semibold tracking-widest text-slate-400 uppercase mr-1">Domains</span>
+    <button data-filter="all" class="filter-btn active text-xs px-2.5 py-1 rounded-full bg-black text-white">All</button>
+    <button data-filter="core" class="filter-btn text-xs px-2.5 py-1 rounded-full bg-white border">Core</button>
+    <button data-filter="catalog" class="filter-btn text-xs px-2.5 py-1 rounded-full bg-white border">Catalog</button>
+    <button data-filter="stock" class="filter-btn text-xs px-2.5 py-1 rounded-full bg-white border">Stock</button>
+    <button data-filter="history" class="filter-btn text-xs px-2.5 py-1 rounded-full bg-white border">History</button>
+    <span class="ml-auto flex gap-1">
+      <button id="btnFit" class="text-xs px-2.5 py-1 rounded-lg border bg-white">Fit</button>
+      <button id="btnReset" class="text-xs px-2.5 py-1 rounded-lg border bg-white">Reset</button>
+      <button id="btnZoomIn" class="text-xs px-2.5 py-1 rounded-lg border bg-white">+</button>
+      <button id="btnZoomOut" class="text-xs px-2.5 py-1 rounded-lg border bg-white">−</button>
+    </span>
+  </div>
+</header>
+<div class="max-w-[1700px] mx-auto flex flex-col lg:flex-row gap-3 p-3">
+  <aside class="lg:w-[300px] bg-white rounded-2xl border flex flex-col max-h-[calc(100vh-120px)] lg:sticky lg:top-[112px]">
+    <div class="p-3 border-b"><input id="search" placeholder="Search tables..." class="w-full text-sm pl-3 pr-3 py-2 rounded-xl bg-slate-50 border"/></div>
+    <div id="tableList" class="overflow-auto p-2 space-y-4 flex-1"></div>
+  </aside>
+  <main class="flex-1 bg-white rounded-2xl border flex flex-col min-h-[720px]">
+    <div class="px-3 py-2 border-b bg-slate-50/50 text-xs text-slate-500">ERD · pan & zoom · click table for details</div>
+    <div id="erdWrap" class="flex-1 overflow-hidden bg-white relative"><div id="mermaidHost" class="w-full h-full"></div></div>
+  </main>
+  <aside class="lg:w-[360px] flex flex-col gap-3 max-h-[calc(100vh-120px)] lg:sticky lg:top-[112px]">
+    <div id="detailCard" class="bg-white rounded-2xl border p-4"><div class="text-[11px] uppercase text-slate-400 font-semibold">Select a table</div><h3 class="font-semibold mt-1">Click any table</h3><p class="text-sm text-slate-500 mt-1">Details will appear here.</p></div>
+  </aside>
+</div>
+<div id="mermaidSrc" style="display:none">
+erDiagram
+    roles { uuid id PK text name UK timestamptz created_at }
+    permissions { uuid id PK text code UK }
+    role_permissions { uuid role_id PK_FK uuid permission_id PK_FK }
+    users { uuid id PK text email UK uuid role_id FK }
+    refresh_tokens { uuid id PK uuid user_id FK text token_hash UK }
+    categories { uuid id PK text name UK }
+    warehouses { uuid id PK text code UK }
+    products { uuid id PK text sku UK numeric price }
+    inventory { uuid id PK uuid product_id FK uuid warehouse_id FK int quantity }
+    inventory_ledger { uuid id PK text transaction_type text direction int quantity }
+    inventory_reservations { uuid id PK text status timestamptz expires_at }
+    inventory_adjustments { uuid id PK text status }
+    cycle_count_plans { uuid id PK text status }
+    cycle_count_items { uuid id PK uuid plan_id FK }
+    activity_logs { uuid id PK text action jsonb details }
+    idempotency_keys { uuid id PK text key_hash UK }
+    system_settings { text key PK text value }
+    roles ||--o{ users : has
+    categories ||--o{ products : contains
+    warehouses ||--o{ inventory : stocks
+    products ||--o{ inventory : has_per_warehouse
+    products ||--o{ inventory_ledger : moves
+    users ||--o{ activity_logs : performs
+    cycle_count_plans ||--o{ cycle_count_items : contains
+</div>
+<script>
+const TABLES=[{id:'roles',domain:'core',label:'roles',desc:'Role catalog'},{id:'permissions',domain:'core',label:'permissions',desc:'Permission codes'},{id:'users',domain:'core',label:'users',desc:'Human accounts'},{id:'refresh_tokens',domain:'core',label:'refresh_tokens',desc:'Refresh families'},{id:'categories',domain:'catalog',label:'categories',desc:'Product grouping'},{id:'warehouses',domain:'catalog',label:'warehouses',desc:'Locations'},{id:'products',domain:'catalog',label:'products',desc:'SKU master'},{id:'inventory',domain:'stock',label:'inventory',desc:'One row per SKU per warehouse'},{id:'inventory_ledger',domain:'history',label:'inventory_ledger',desc:'Append-only movements'},{id:'inventory_reservations',domain:'stock',label:'inventory_reservations',desc:'Available vs reserved'},{id:'inventory_adjustments',domain:'stock',label:'inventory_adjustments',desc:'Correction workflow'},{id:'cycle_count_plans',domain:'catalog',label:'cycle_count_plans',desc:'Plan header'},{id:'cycle_count_items',domain:'catalog',label:'cycle_count_items',desc:'Per-SKU count'},{id:'activity_logs',domain:'safety',label:'activity_logs',desc:'Who asked'},{id:'idempotency_keys',domain:'safety',label:'idempotency_keys',desc:'Exactly-once'}];
+const listEl=document.getElementById('tableList');
+const groups={}; TABLES.forEach(t=>{(groups[t.domain]||=[]).push(t); if(!groups[t.domain])groups[t.domain]=[];});
+Object.keys(groups).forEach(d=>{});
+TABLES.forEach(t=>{
+  const row=document.createElement('button');
+  row.dataset.id=t.id; row.dataset.domain=t.domain;
+  row.className='table-row w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 border text-sm mono';
+  row.textContent=t.label;
+  row.onclick=()=>selectTable(t.id);
+  listEl.appendChild(row);
+});
+function selectTable(id){document.querySelectorAll('.table-row').forEach(el=>el.classList.toggle('hl',el.dataset.id===id)); highlightDiagram(id);}
+function highlightDiagram(id){
+  const svg=document.querySelector('#mermaidHost svg'); if(!svg) return;
+  svg.querySelectorAll('g.node').forEach(n=>{ const txt=(n.textContent||'').toLowerCase(); n.style.opacity=(!id||txt.includes(id))?'1':'.2'; });
+}
+let panZoom=null;
+async function render(){
+  const src=document.getElementById('mermaidSrc').textContent;
+  const {svg}=await mermaid.render('erdSvg',src);
+  document.getElementById('mermaidHost').innerHTML=svg;
+  const svgEl=document.querySelector('#mermaidHost svg');
+  svgEl.style.width='100%'; svgEl.style.height='100%';
+  svgEl.querySelectorAll('g.node').forEach(n=>{n.style.cursor='pointer'; n.onclick=()=>{const txt=(n.textContent||'').toLowerCase(); const f=TABLES.find(t=>txt.includes(t.id)); if(f)selectTable(f.id);}});
+  panZoom=svgPanZoom(svgEl,{zoomEnabled:true,controlIconsEnabled:false,fit:true,center:true,minZoom:0.2,maxZoom:4});
+}
+render();
+document.getElementById('search').addEventListener('input',e=>{
+  const q=e.target.value.toLowerCase(); document.querySelectorAll('.table-row').forEach(r=>{r.style.display=(!q||r.dataset.id.includes(q))?'':'none';});
+});
+document.querySelectorAll('.filter-btn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.filter-btn').forEach(x=>x.classList.remove('active','bg-black','text-white'));
+  b.classList.add('active','bg-black','text-white');
+  const f=b.dataset.filter;
+  document.querySelectorAll('.table-row').forEach(r=>{r.style.display=(f==='all'||r.dataset.domain===f)?'':'none';});
+}));
+document.getElementById('btnFit').onclick=()=>panZoom&&panZoom.fit();
+document.getElementById('btnReset').onclick=()=>panZoom&&panZoom.resetZoom();
+document.getElementById('btnZoomIn').onclick=()=>panZoom&&panZoom.zoomIn();
+document.getElementById('btnZoomOut').onclick=()=>panZoom&&panZoom.zoomOut();
+</script>
+</body>
+</html>

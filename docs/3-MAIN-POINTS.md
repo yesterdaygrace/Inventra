@@ -55,7 +55,7 @@ erDiagram
     users ||--o{ inventory_ledger : performs
 ```
 
-*For the complete 16-table diagram, open `docs/er.md` — it matches `migrations/000001…000013` exactly.*
+*For the complete 16-table diagram, open `docs/er.md` — or the **interactive ERD** at `docs/database-erd.html` (search, pan/zoom, domain filter, click for details) — both match `migrations/000001…000013` exactly.
 
 **Verify:** `grep "CREATE TABLE" migrations/*.sql` → `ls migrations/*.up.sql` → `docs/database.md:Indexes and Constraints` → `docs/er.md`.
 
@@ -78,7 +78,7 @@ Every stock change is **atomic** and **locked** — the classic hard problem in 
 | **Create Cycle Plan** | Create `cycle_count_plans` + many `cycle_count_items` together |
 | **Idempotency** | `idempotency_keys` (`UNIQUE key_hash`, TTL 24h) — same `Idempotency-Key` + same body replays, different body → `409` |
 
-**12 row-level locks** — `SELECT … FOR UPDATE` via `clause.Locking{Strength:"UPDATE"}` on every hot path:
+**11 row-level locks** — `SELECT … FOR UPDATE` via `clause.Locking{Strength:"UPDATE"}` on every hot path:
 `Receive :125`, `Issue :181`, `Transfer src :270` + `dst :302`, `CreateReservation :493`, `Release :536/:547`, `Consume :579/:590`, `ApplyCorrection :709`, `Count item cyclecount:84`. Held inside the transaction until `COMMIT`.
 
 Lazy expiry: `expireStaleReservations` flips `ACTIVE → EXPIRED` where `expires_at < now()` with `GREATEST(0, reserved_quantity − released)` — caller must hold the lock, so it never double-subtracts.
@@ -92,7 +92,7 @@ Two staff clicking `Stock Out 5` at the same second must not both succeed when o
 ### Impact
 **0% oversell, 0% partial writes, 100% exactly-once on retries** — even under concurrent users. The `version` column bumps on every movement for optimistic detection; failed attempts leave no partial ledger row.
 
-**Verify:** `internal/inventory/repository.go:123,179,248,476,534,577,707` + `cyclecount/repository.go:52` + `middleware/idempotency.go:64,138` + `grep clause.Locking` → 12 → `docs/database.md:Appendix A1-A2`.
+**Verify:** `internal/inventory/repository.go:123,179,248,476,534,577,707` + `cyclecount/repository.go:52` + `middleware/idempotency.go:64,138` + `grep clause.Locking` → 11 → `docs/database.md:Appendix A1-A2`.
 
 ---
 
@@ -115,7 +115,7 @@ Two staff clicking `Stock Out 5` at the same second must not both succeed when o
 | **`activity_logs`** — *who asked* | `user_id`, `action` (`LOGIN`, `CREATE_PRODUCT`, `STOCK_IN`, `TRANSFER`…), `entity_type/id`, `details` + `before_data/after_data`, `ip`, `user_agent`, `request_id` | `internal/shared/audit/audit.go:27` (`Record` returns nothing — never fails the business op), `activitylog/model.go:13`, `migrations/000001:96` |
 | **`inventory_ledger`** — *what stock did* | Immutable `IN/OUT` rows, `performed_by`, `transfer_id`, `reason`; **never UPDATE/DELETE** — corrections are new `ADJUSTMENT` rows | `inventory/model.go:57`, balance derived on read via window `SUM(CASE WHEN direction='OUT'…)` — `repository.go:431` |
 
-**38 audit points** across 8 modules: `auth:39,48` (login/register), `product:43`, `category:40`, `warehouses:39`, `inventory:316,400,632,661,684`, `adjustment:94,181`, `cyclecount:88,192`, `user:42`. Read at `GET /api/v1/activity-logs` (ADMIN).
+**14 production audit points** (31 total incl. tests) across 8 modules: `auth:39,48` (login/register), `product:43`, `category:40`, `warehouses:39`, `inventory:316,400,632,661,684`, `adjustment:94,181`, `cyclecount:88,192`, `user:42`. Read at `GET /api/v1/activity-logs` (ADMIN).
 
 ![Activity log — who did what, when, before/after](../demo-18-activity.png)
 *Activity log — the audit trail (who/what/when, IP, before/after, request ID). Failure-safe: it never blocks the stock operation.*
@@ -126,13 +126,13 @@ You can answer "who changed stock X from 10 to 15 yesterday at 14:02 from IP Y?"
 ### Impact
 **~90% bad requests rejected at the edge, 100% of mutations traceable, ~95% fewer stock errors.** `before/after` + `X-Request-ID` cuts incident debug time by ~60%.
 
-**Verify:** `grep "validate:" internal/*/handler.go` → `grep audit.Record internal/ | wc -l` → 38 → `docs/database.md:Appendix A3-A4` + `docs/security.md:§7`.
+**Verify:** `grep "validate:" internal/*/handler.go` → `grep "h.audit.Record" internal/ | wc -l` → 14 (31 total) → `docs/database.md:Appendix A3-A4` + `docs/security.md:§7`.
 
 ---
 
 ## How to use this file
 
-- **HR / Recruiter (60s):** Read the 3 headers + impact lines. You know: 17 tables, 8 atomic workflows, 12 locks, 100% audited.
+- **HR / Recruiter (60s):** Read the 3 headers + impact lines. You know: 17 tables, 8 atomic workflows, 11 locks, 100% audited.
 - **Engineer (3 min):** Click the file:line links under each point → open `docs/database.md:Appendix` for exhaustive tables.
 - **DB interview:** Run the 4 commands at the bottom of `docs/database.md:Appendix` — `CREATE TABLE`, `clause.Locking`, `audit.Record` counts.
 

@@ -527,4 +527,20 @@ Coverage gate: ≥80% per package.
 
 ---
 
+---
+
+## 10. Data Integrity & Concurrency (fix-v2)
+
+This section mirrors the exhaustive evidence now also in `docs/database.md` Appendix A.
+
+**Atomicity.** Every stock-mutating path is a `gorm.DB.Transaction` — see `docs/database.md:A1` for the 7 inventory + 1 cycle count + idempotency sites (`inventory/repository.go:123,179,248,476,534,577,707`, `cyclecount/repository.go:52`). The standard is mandated in `docs/coding-standards.md:840`.
+
+**Row-level locking.** `FOR UPDATE` via `clause.Locking{Strength:"UPDATE"}` on all hot paths (11 + 1) — see `docs/database.md:A2`. The lock is held until `COMMIT`; stale reservations are lazily expired inside the lock.
+
+**Ledger.** Append-only; balance is derived on read via window function — see `docs/database.md:A4`.
+
+**Validation & audit** are layered per `docs/database.md:A3/A4` and `docs/security.md`.
+
+---
+
 *This document is SPEC-FIRST. All code implementations must conform to this architecture. Module names, layering, and responsibilities in later code todos must match this specification exactly.*
