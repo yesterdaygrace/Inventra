@@ -13,6 +13,6 @@ npm run build
 npm run preview
 ```
 
-Backend: `make docker-up` + `make seed` (API `:8080`, Postgres `:5432`)
+Backend: `make docker-up` + `make seed` (API `:8080`, Postgres `:5432`). With `DEMO_MODE=true`, the frontend automatically signs in as `demo@inventory.local`; no login form is required.
 
-Screenshots live at repo root `demo-*.png` — all 18 are tracked and rendered in `docs/frontend.md` and `README.md`.
+Screenshots live in `docs/screenshoot/demo-*.png` — all 18 are tracked and rendered in `docs/frontend.md` and `README.md`.

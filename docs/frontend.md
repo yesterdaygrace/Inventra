@@ -4,7 +4,7 @@
 **Screens:** 12 pages (`dashboard`, `products`, `categories`, `warehouses`, `inventory`, `transactions`, `reports`, `users`, `activity`, `settings`, `login`, `register`) + responsive variants
 **State:** TanStack Query (`useApiQuery`, `useList`) + shadcn-style `components/ui` kit
 
-> All 18 screenshots below are live captures from the current `web/` build (`demo-*.png` at repo root). Open `docs/database-erd.html` for the DB, this file for the UI.
+> All 18 screenshots below are live captures from the current `web/` build (`docs/screenshoot/demo-*.png`). Open `docs/database-erd.html` for the DB, this file for the UI.
 
 ---
 
@@ -12,7 +12,7 @@
 
 | Live | Dark | Desktop | Mobile |
 |---|---|---|---|
-| ![Dashboard Live](../demo-05-dashboard-live.png) | ![Dashboard Dark](../demo-06-dashboard-dark.png) | ![Dashboard Desktop](../demo-08-dashboard-desktop.png) | ![Dashboard Mobile](../demo-07-dashboard-mobile.png) |
+| ![Dashboard Live](screenshoot/demo-05-dashboard-live.png) | ![Dashboard Dark](screenshoot/demo-06-dashboard-dark.png) | ![Dashboard Desktop](screenshoot/demo-08-dashboard-desktop.png) | ![Dashboard Mobile](screenshoot/demo-07-dashboard-mobile.png) |
 
 **What it shows:** KPIs (total products, stock value, low-stock, out-of-stock), recent ledger activity, category distribution, inventory movement. Data from `GET /dashboard/summary` + `GET /dashboard/activity` — aggregates derived from `inventory_ledger` and `activity_logs`.
 
@@ -22,7 +22,7 @@
 
 | List | Sort & Export | Archived |
 |---|---|---|
-| ![Products List](../demo-09-products-list.png) | ![Products Sort Export](../demo-12-products-sort-export.png) | ![Products Archived](../demo-11-products-archived-view.png) |
+| ![Products List](screenshoot/demo-09-products-list.png) | ![Products Sort Export](screenshoot/demo-12-products-sort-export.png) | ![Products Archived](screenshoot/demo-11-products-archived-view.png) |
 
 **What it shows:** CRUD, search (`q` name/SKU), category/price/low-stock filters, sort, pagination, CSV export. `is_archived` soft-delete, `low_stock_threshold` per product.
 
@@ -32,7 +32,7 @@
 
 | Active / Inactive |
 |---|
-| ![Categories Inactive Badge](../demo-10-categories-inactive-badge.png) |
+| ![Categories Inactive Badge](screenshoot/demo-10-categories-inactive-badge.png) |
 
 **What it shows:** Category list with active/inactive badges (`is_active`), product counts, deactivation guard (409 if products still reference it).
 
@@ -42,7 +42,7 @@
 
 | Stock Levels | Overdraw Guard |
 |---|---|
-| ![Inventory](../demo-13-inventory.png) | ![Inventory Overdraw](../demo-16-inventory-overdraw.png) |
+| ![Inventory](screenshoot/demo-13-inventory.png) | ![Inventory Overdraw](screenshoot/demo-16-inventory-overdraw.png) |
 
 **What it shows:** Per-warehouse stock (`UNIQUE product_id+warehouse_id`), `quantity` + `reserved_quantity` + `version`, low-stock badges. Overdraw attempt → `409 INSUFFICIENT_STOCK` with no partial ledger row (atomic `FOR UPDATE`).
 
@@ -52,7 +52,7 @@
 
 | Transactions | Reports |
 |---|---|
-| ![Transactions](../demo-14-transactions.png) | ![Reports](../demo-15-reports.png) |
+| ![Transactions](screenshoot/demo-14-transactions.png) | ![Reports](screenshoot/demo-15-reports.png) |
 
 **What it shows:** Append-only `inventory_ledger` history (`RECEIVE/ISSUE/TRANSFER_IN/TRANSFER_OUT/ADJUSTMENT`), `transfer_id` pairing, and `GET /reports` stock summary + CSV.
 
@@ -62,7 +62,7 @@
 
 | Users | Activity Log | Settings |
 |---|---|---|
-| ![Users](../demo-17-users.png) | ![Activity](../demo-18-activity.png) | ![Settings](../demo-19-settings.png) |
+| ![Users](screenshoot/demo-17-users.png) | ![Activity](screenshoot/demo-18-activity.png) | ![Settings](screenshoot/demo-19-settings.png) |
 
 **What it shows:** Admin user management (role `ADMIN`/`STAFF`, `is_active`), paginated audit log (`GET /activity-logs` — `action`, `entity_type`, `before/after`, `IP`), and settings/profile (`change-password`, `DEMO_MODE`).
 
@@ -72,7 +72,7 @@
 
 | Mobile | Tablet | Desktop |
 |---|---|---|
-| ![Responsive Mobile](../demo-20-responsive-mobile.png) | ![Responsive Tablet](../demo-21-responsive-tablet.png) | ![Responsive Desktop](../demo-22-responsive-desktop.png) |
+| ![Responsive Mobile](screenshoot/demo-20-responsive-mobile.png) | ![Responsive Tablet](screenshoot/demo-21-responsive-tablet.png) | ![Responsive Desktop](screenshoot/demo-22-responsive-desktop.png) |
 
 **What it shows:** Tailwind 4 responsive shell — `app-layout` + `command-palette` (Radix dialog/dropdown), same 12 pages adapt from 320px to 1440px.
 
@@ -115,4 +115,4 @@ Backend must be running (`make docker-up` + `make seed` — API on `:8080`, Post
 | 21 | `demo-21-responsive-tablet.png` | Responsive — tablet |
 | 22 | `demo-22-responsive-desktop.png` | Responsive — desktop |
 
-> Tip: open any `demo-*.png` at repo root for full-resolution.
+> Tip: open any `demo-*.png` in `docs/screenshoot/` for full-resolution.

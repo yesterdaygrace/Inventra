@@ -5,7 +5,7 @@
 **Stack:** Go 1.24 + Gin + GORM + PostgreSQL 17 + React 19 + Vite + Tailwind 4
 **Status:** 13 versioned migrations (`000001…000013`), 17 live tables, Docker + CI
 
-![Inventra Dashboard — KPIs, low-stock and recent activity](../demo-05-dashboard-live.png)
+![Inventra Dashboard — KPIs, low-stock and recent activity](screenshoot/demo-05-dashboard-live.png)
 *Dashboard — the first screen a reviewer sees. KPIs and recent ledger activity derived from the same atomic transactions below.*
 
 ---
@@ -35,7 +35,7 @@ Without this design, you cannot track the same SKU in 5 warehouses, you cannot r
 - **30+ constraints** — `CHECK quantity >= 0`, `CHECK quantity > 0`, `CHECK direction IN ('IN','OUT')`, `UNIQUE sku/email/code`, `FOREIGN KEY` everywhere. Bad data is rejected by the database, not just the app.
 - **5 indexes** for the queries you actually run — `idx_inventory_product_warehouse`, `idx_ledger_product_created`, `idx_activity_created` etc. Lists and history stay fast.
 
-![Products & Inventory — per-warehouse stock, low-stock badges](../demo-13-inventory.png)
+![Products & Inventory — per-warehouse stock, low-stock badges](screenshoot/demo-13-inventory.png)
 *Inventory — per-warehouse stock (`UNIQUE product_id+warehouse_id`) with low-stock badges. This UI is impossible without the 17-table design above.*
 
 **Impact:** ~95% fewer invalid-data bugs at the DB layer, 50-70% faster inventory/history queries (index-only), 0 schema drift between dev and prod.
@@ -86,7 +86,7 @@ Lazy expiry: `expireStaleReservations` flips `ACTIVE → EXPIRED` where `expires
 ### Why it matters
 Two staff clicking `Stock Out 5` at the same second must not both succeed when only 5 remain. Without locks + transactions, you oversell and your ledger disagrees with reality.
 
-![Stock movements — receive / issue / transfer, all atomic](../demo-14-transactions.png)
+![Stock movements — receive / issue / transfer, all atomic](screenshoot/demo-14-transactions.png)
 *Transactions — receive, issue, and transfers (two rows sharing one `transfer_id`). What you see here is exactly the ledger that the transactions guarantee.*
 
 ### Impact
@@ -117,7 +117,7 @@ Two staff clicking `Stock Out 5` at the same second must not both succeed when o
 
 **14 production audit points** (31 total incl. tests) across 8 modules: `auth:39,48` (login/register), `product:43`, `category:40`, `warehouses:39`, `inventory:316,400,632,661,684`, `adjustment:94,181`, `cyclecount:88,192`, `user:42`. Read at `GET /api/v1/activity-logs` (ADMIN).
 
-![Activity log — who did what, when, before/after](../demo-18-activity.png)
+![Activity log — who did what, when, before/after](screenshoot/demo-18-activity.png)
 *Activity log — the audit trail (who/what/when, IP, before/after, request ID). Failure-safe: it never blocks the stock operation.*
 
 ### Why it matters

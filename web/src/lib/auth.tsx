@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import type { Role, User } from "@/types/api";
+import type { AuthSession, Role, User } from "@/types/api";
 import { authApi, clearStoredAuth, emitUnauthorized, loadStoredAuth, storeAuth } from "@/lib/api";
 import { queryClient } from "@/lib/query";
 
@@ -16,6 +16,7 @@ interface AuthContextValue {
 }
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
+let demoLoginPromise: Promise<AuthSession> | null = null;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null);
@@ -35,9 +36,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const init = async () => {
       if (!stored?.accessToken) {
-        setIsInitializing(false);
+        const request = demoLoginPromise ?? (demoLoginPromise = authApi.demo());
+        try {
+          // The API controls whether demo access is available via DEMO_MODE.
+          // When enabled, start local/demo sessions without showing the login form.
+          const session = await request;
+          if (!cancelled) {
+            applySession(session);
+          }
+        } catch {
+          // Demo mode is optional; fall back to the normal login route.
+        } finally {
+          if (demoLoginPromise === request) {
+            demoLoginPromise = null;
+          }
+          if (!cancelled) setIsInitializing(false);
+        }
         return;
       }
+
       try {
         const me = await authApi.me();
         if (!cancelled) {
@@ -63,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       window.removeEventListener("inventra:unauthorized", onUnauthorized);
     };
-  }, []);
+  }, [applySession]);
 
   const login = React.useCallback(
     async (email: string, password: string) => {

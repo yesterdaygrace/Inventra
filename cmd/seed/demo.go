@@ -180,6 +180,7 @@ func seedDemoInventory(db *gorm.DB) error {
 		txn := inventory.LedgerEntry{
 			ProductID:       prod.ID,
 			TransactionType: inventory.LedgerReceive,
+			Direction:       "IN",
 			Quantity:        100,
 			UnitCost:        &prod.Price,
 			TotalCost:       inventory.TotalCostOf(100, &prod.Price),

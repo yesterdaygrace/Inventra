@@ -47,6 +47,7 @@ playwright-report/
 test-results/
 # demo screenshots are tracked for README gallery (do not ignore)
 !demo-*.png
+!docs/screenshoot/*.png
 
 # Logs
 logs/
@@ -80,6 +81,7 @@ Desktop.ini
 # Cache / temp
 .ruff_cache/
 .cache/
+.codebase-memory/
 tmp/
 temp/
 *.tmp
